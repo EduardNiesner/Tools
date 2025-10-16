@@ -21,7 +21,7 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 3.1 - Simplified TFM handling without Variable TFM token UI)
+### Current (Step 5 - Append framework for SDK-only projects)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
@@ -35,12 +35,27 @@ dotnet run --project CsprojChecker
   - "Change target framework" button (enabled only when all selected rows have identical TFM sets)
   - Target framework ComboBox (prefilled with exact TFMs from selection, semicolon-separated)
   - TFM comparison: order-insensitive and case-insensitive for literals (e.g., net9;net8 equals net8;net9), exact match for variables
+  - "Append target framework" button (enabled only when all selected rows are SDK-style)
+  - Append target framework ComboBox (for entering TFMs to append)
+  - **Append functionality:**
+    - Works across mixed SDK projects with different existing TFM sets
+    - Preserves existing TFMs in each project
+    - Parses typed tokens (variables/literals) from input
+    - Deduplicates tokens (variables exact match, literals case-insensitive)
+    - Sorts tokens (variables first, then literals by version descending)
+    - Writes to TargetFrameworks property (converts TargetFramework to TargetFrameworks when needed)
+    - WinForms autocorrection: automatically adds `-windows` suffix to net5.0+ literal frameworks
+    - Confirmation dialog before applying changes
+    - Results dialog showing successful/failed updates
+    - Updates grid with new TFM values
+    - Highlights changed rows in green with checkmark
+    - Disabled for Old-style projects
   - Empty TFM cells for projects without TargetFramework/TargetFrameworks
 - **Responsive GUI:** Full screen support with proper anchoring for all controls
 - Project style conversions region (placeholder)
 
 ### Planned
-- Framework operations functionality (Append TFM for SDK projects)
+- Framework operations functionality (Change TFM)
 - Project style conversion functionality
 
 ## Project Structure
