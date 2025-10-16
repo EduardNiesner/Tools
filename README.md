@@ -21,7 +21,7 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 5 - Append framework for SDK-only projects)
+### Current (Step 6 - Convert Old-style → SDK)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
@@ -52,11 +52,23 @@ dotnet run --project CsprojChecker
     - Disabled for Old-style projects
   - Empty TFM cells for projects without TargetFramework/TargetFrameworks
 - **Responsive GUI:** Full screen support with proper anchoring for all controls
-- Project style conversions region (placeholder)
+- **Project Style Conversions:**
+  - "Convert Old-style → SDK" button (enabled only when all selected rows are Old-style)
+  - **Conversion functionality:**
+    - Skips projects that are already SDK-style
+    - Maps old-style framework versions to SDK-style (v4.x → net4x)
+    - For WinForms projects, adds `-windows` suffix (e.g., v4.8 → net48-windows)
+    - Preserves variable tokens verbatim (like `$(TargetFrameworks)`)
+    - Converts project structure to SDK-style format
+    - Removes legacy project elements (References, Imports, etc.)
+    - Sets essential properties (OutputType, UseWindowsForms, ImplicitUsings, Nullable)
+    - Confirmation dialog before applying changes
+    - Results dialog showing successful/failed conversions
+    - Updates grid with new Style and TFM values
+    - Highlights changed rows in green with checkmark
 
 ### Planned
 - Framework operations functionality (Change TFM)
-- Project style conversion functionality
 
 ## Project Structure
 

@@ -19,8 +19,8 @@ public partial class MainForm : Form
     private Button appendTargetFrameworkButton = null!;
     private ComboBox appendTargetFrameworkComboBox = null!;
     
-    // Placeholder controls for Project style conversions region
-    private Label projectStylePlaceholderLabel = null!;
+    // Project style conversion controls
+    private Button convertToSdkButton = null!;
     
     // For cancellation support
     private CancellationTokenSource? _cancellationTokenSource;
@@ -179,15 +179,17 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         
-        // Placeholder label for Project style conversions
-        projectStylePlaceholderLabel = new Label
+        // Convert to SDK-style button
+        convertToSdkButton = new Button
         {
             Location = new Point(10, 25),
-            Size = new Size(440, 20),
-            Text = "Project style conversion controls (placeholder)",
-            Name = "projectStylePlaceholderLabel"
+            Size = new Size(250, 31),
+            Text = "Convert Old-style → SDK",
+            Name = "convertToSdkButton",
+            Enabled = false
         };
-        projectStyleGroupBox.Controls.Add(projectStylePlaceholderLabel);
+        convertToSdkButton.Click += ConvertToSdkButton_Click;
+        projectStyleGroupBox.Controls.Add(convertToSdkButton);
         
         // Status Label
         statusLabel = new Label
@@ -562,6 +564,90 @@ public partial class MainForm : Form
         UpdateFrameworkOperationsState();
     }
     
+    private async void ConvertToSdkButton_Click(object? sender, EventArgs e)
+    {
+        // Get selected Old-style projects
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+        
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var style = row.Cells["Style"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+            
+            if (style == "Old-style")
+            {
+                selectedProjects.Add((row.Index, filePath, currentTfms));
+            }
+        }
+        
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+        
+        // Show confirmation dialog
+        var confirmMessage = $"Are you sure you want to convert {selectedProjects.Count} Old-style project(s) to SDK-style?\n\n" +
+                           "This will:\n" +
+                           "- Convert the project file to SDK-style format\n" +
+                           "- Map old framework versions (v4.x) to SDK-style (net4x)\n" +
+                           "- Add -windows suffix for WinForms projects\n" +
+                           "- Remove most legacy project elements";
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Conversion",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+        
+        // Apply changes
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+        
+        foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
+        {
+            try
+            {
+                // Convert the project file
+                var newTfms = await ConvertOldStyleToSdkAsync(filePath, currentTfms);
+                
+                // Update grid
+                projectsGridView.Rows[rowIndex].Cells["Style"].Value = "SDK";
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+        
+        // Show results
+        var resultMessage = $"Conversion completed:\n\n" +
+                          $"Successful: {successCount}\n" +
+                          $"Errors: {errorCount}\n\n" +
+                          string.Join("\n", results.Take(10));
+        
+        if (results.Count > 10)
+        {
+            resultMessage += $"\n\n... and {results.Count - 10} more";
+        }
+        
+        MessageBox.Show(resultMessage, "Conversion Results",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        
+        // Refresh selection state
+        UpdateFrameworkOperationsState();
+    }
+    
     private void UpdateFrameworkOperationsState()
     {
         if (projectsGridView.SelectedRows.Count == 0)
@@ -571,12 +657,14 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Text = "";
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
+            convertToSdkButton.Enabled = false;
             return;
         }
         
         // Collect TFM values from all selected rows
         List<string> tfmValues = new List<string>();
         bool allSdkStyle = true;
+        bool allOldStyle = true;
         
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
@@ -585,9 +673,16 @@ public partial class MainForm : Form
                 tfmValues.Add(tfmValue);
             }
             
-            if (row.Cells["Style"].Value is string styleValue && styleValue != "SDK")
+            if (row.Cells["Style"].Value is string styleValue)
             {
-                allSdkStyle = false;
+                if (styleValue != "SDK")
+                {
+                    allSdkStyle = false;
+                }
+                if (styleValue != "Old-style")
+                {
+                    allOldStyle = false;
+                }
             }
         }
         
@@ -598,6 +693,7 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Text = "";
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
+            convertToSdkButton.Enabled = false;
             return;
         }
         
@@ -641,6 +737,16 @@ public partial class MainForm : Form
         {
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
+        }
+        
+        // Enable Convert to SDK button only if all selected rows are Old-style
+        if (allOldStyle)
+        {
+            convertToSdkButton.Enabled = true;
+        }
+        else
+        {
+            convertToSdkButton.Enabled = false;
         }
     }
     
@@ -929,6 +1035,155 @@ public partial class MainForm : Form
         normalizedSet.Tfms = normalizedTfms;
         
         return normalizedSet;
+    }
+    
+    private async Task<string> ConvertOldStyleToSdkAsync(string filePath, string oldTfm)
+    {
+        return await Task.Run(() =>
+        {
+            var doc = XDocument.Load(filePath);
+            var root = doc.Root;
+            
+            if (root == null)
+            {
+                throw new InvalidOperationException("Invalid project file");
+            }
+            
+            // Check if already SDK-style
+            if (root.Attribute("Sdk") != null)
+            {
+                // Already SDK-style, skip
+                return ParseTargetFrameworks(root);
+            }
+            
+            XNamespace ns = root.GetDefaultNamespace();
+            
+            // Detect if it's a WinForms project
+            bool isWinForms = DetectWinFormsProject(root, ns);
+            
+            // Convert framework version
+            string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
+            
+            // Create new SDK-style project
+            var newRoot = new XElement("Project");
+            
+            // Determine SDK attribute
+            if (isWinForms)
+            {
+                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
+            }
+            else
+            {
+                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
+            }
+            
+            // Create PropertyGroup with essential properties
+            var propertyGroup = new XElement("PropertyGroup");
+            
+            // Add TargetFramework
+            propertyGroup.Add(new XElement("TargetFramework", newTfm));
+            
+            // Add OutputType if needed
+            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
+            if (outputType != null)
+            {
+                propertyGroup.Add(new XElement("OutputType", outputType.Value));
+            }
+            
+            // Add WinForms specific properties if needed
+            if (isWinForms)
+            {
+                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
+                propertyGroup.Add(new XElement("EnableWindowsTargeting", "true"));
+            }
+            
+            // Add common properties
+            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
+            propertyGroup.Add(new XElement("Nullable", "enable"));
+            
+            // Copy over RootNamespace if it exists
+            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
+            if (rootNamespace != null)
+            {
+                propertyGroup.Add(new XElement("RootNamespace", rootNamespace.Value));
+            }
+            
+            // Copy over AssemblyName if it exists
+            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
+            if (assemblyName != null)
+            {
+                propertyGroup.Add(new XElement("AssemblyName", assemblyName.Value));
+            }
+            
+            newRoot.Add(propertyGroup);
+            
+            // Create new document
+            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
+            
+            // Save the new document
+            newDoc.Save(filePath);
+            
+            return newTfm;
+        });
+    }
+    
+    private bool DetectWinFormsProject(XElement root, XNamespace ns)
+    {
+        // Check for WinForms indicators
+        var references = root.Descendants(ns + "Reference")
+                            .Select(r => r.Attribute("Include")?.Value ?? "")
+                            .ToList();
+        
+        bool hasWinFormsRef = references.Any(r => 
+            r.Contains("System.Windows.Forms") || 
+            r.Contains("System.Drawing"));
+        
+        // Check for UseWindowsForms property
+        var useWindowsForms = root.Descendants(ns + "UseWindowsForms").FirstOrDefault();
+        if (useWindowsForms != null && useWindowsForms.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        
+        // Check for form files
+        var compiles = root.Descendants(ns + "Compile")
+                          .Select(c => c.Attribute("Include")?.Value ?? "")
+                          .ToList();
+        
+        bool hasFormFiles = compiles.Any(c => c.EndsWith(".Designer.cs"));
+        
+        return hasWinFormsRef || hasFormFiles;
+    }
+    
+    private string ConvertFrameworkVersion(string oldTfm, bool isWinForms)
+    {
+        // Handle variable tokens - preserve them verbatim
+        if (oldTfm.StartsWith("$"))
+        {
+            return oldTfm;
+        }
+        
+        // Map old-style versions to SDK-style
+        // Examples: v4.5 → net45, v4.7.2 → net472
+        var trimmed = oldTfm.Trim();
+        
+        if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            // Remove 'v' prefix and dots
+            var version = trimmed.Substring(1).Replace(".", "");
+            var newTfm = "net" + version;
+            
+            // For .NET Framework 4.x versions on WinForms, add -windows suffix
+            if (isWinForms && version.StartsWith("4"))
+            {
+                newTfm += "-windows";
+            }
+            
+            return newTfm;
+        }
+        
+        // If it doesn't start with 'v', return as-is
+        return trimmed;
     }
     
     private class NormalizedTfmSet
