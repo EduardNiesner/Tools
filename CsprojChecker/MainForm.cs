@@ -558,11 +558,93 @@ public partial class MainForm : Form
         UpdateFrameworkOperationsState();
     }
     
-    private void ChangeTargetFrameworkButton_Click(object? sender, EventArgs e)
+    private async void ChangeTargetFrameworkButton_Click(object? sender, EventArgs e)
     {
-        // Placeholder for actual implementation
-        MessageBox.Show("Change target framework functionality will be implemented in a future step.", 
-            "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var newValue = targetFrameworkComboBox.Text.Trim();
+        
+        if (string.IsNullOrWhiteSpace(newValue))
+        {
+            MessageBox.Show("Please enter a target framework.", "No Framework Specified",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        
+        // Get selected projects
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+        
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+            
+            selectedProjects.Add((row.Index, filePath, currentTfms));
+        }
+        
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+        
+        // Show confirmation dialog
+        var confirmMessage = $"Are you sure you want to change the target framework to '{newValue}' for {selectedProjects.Count} project(s)?";
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Change",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+        
+        // Apply changes
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+        
+        foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
+        {
+            try
+            {
+                // Write to file
+                await WriteTfmToFileAsync(filePath, newValue);
+                
+                // Update grid
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newValue;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newValue}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+        
+        // Show results
+        var resultMessage = $"Change completed:\n\n" +
+                          $"Successful: {successCount}\n" +
+                          $"Errors: {errorCount}\n\n" +
+                          string.Join("\n", results.Take(10));
+        
+        if (results.Count > 10)
+        {
+            resultMessage += $"\n\n... and {results.Count - 10} more";
+        }
+        
+        MessageBox.Show(resultMessage, "Change Results",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        
+        // Refresh selection state
+        UpdateFrameworkOperationsState();
     }
     
     private async void AppendTargetFrameworkButton_Click(object? sender, EventArgs e)
