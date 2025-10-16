@@ -21,7 +21,7 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 6 - Convert Old-style → SDK)
+### Current (Step 7 - Convert SDK → Old-style [constrained])
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
@@ -54,7 +54,7 @@ dotnet run --project CsprojChecker
 - **Responsive GUI:** Full screen support with proper anchoring for all controls
 - **Project Style Conversions:**
   - "Convert Old-style → SDK" button (enabled only when all selected rows are Old-style)
-  - **Conversion functionality:**
+  - **Old-style → SDK Conversion functionality:**
     - Skips projects that are already SDK-style
     - Maps old-style framework versions to SDK-style (v4.x → net4x)
     - For WinForms projects, adds `-windows` suffix (e.g., v4.8 → net48-windows)
@@ -64,6 +64,20 @@ dotnet run --project CsprojChecker
     - Sets essential properties (OutputType, UseWindowsForms, ImplicitUsings, Nullable)
     - Confirmation dialog before applying changes
     - Results dialog showing successful/failed conversions
+    - Updates grid with new Style and TFM values
+    - Highlights changed rows in green with checkmark
+  - "Convert SDK → Old-style" button (enabled only when all selected rows are SDK-style)
+  - **SDK → Old-style Conversion functionality (constrained):**
+    - Skips projects that are already Old-style
+    - Only proceeds if single .NET Framework target (net40–net48[-windows]) and no PackageReference items
+    - Blocks and reports projects with PackageReferences or multiple targets
+    - Maps SDK-style framework versions to old-style (net4x → v4.x)
+    - Preserves variable tokens verbatim (like `$(TargetFrameworks)`)
+    - Converts project structure to Old-style format with MSBuild namespace
+    - Adds legacy project elements (References, Imports, PropertyGroups)
+    - Restores .NET Framework project structure
+    - Confirmation dialog before applying changes
+    - Results dialog showing successful/failed/skipped conversions
     - Updates grid with new Style and TFM values
     - Highlights changed rows in green with checkmark
 
