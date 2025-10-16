@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace CsprojChecker;
 
 public partial class MainForm : Form
@@ -16,6 +18,9 @@ public partial class MainForm : Form
     
     // Placeholder controls for Project style conversions region
     private Label projectStylePlaceholderLabel = null!;
+    
+    // For cancellation support
+    private CancellationTokenSource? _cancellationTokenSource;
 
     public MainForm()
     {
@@ -39,21 +44,21 @@ public partial class MainForm : Form
             Name = "folderPathTextBox"
         };
         
-        // Browse Button
+        // Browse Button (height increased by 25%)
         browseButton = new Button
         {
             Location = new Point(630, 19),
-            Size = new Size(100, 25),
+            Size = new Size(100, 31),
             Text = "Browse",
             Name = "browseButton"
         };
         browseButton.Click += BrowseButton_Click;
         
-        // Check for csproj files Button
+        // Check for csproj files Button (height increased by 25%)
         checkCsprojButton = new Button
         {
             Location = new Point(740, 19),
-            Size = new Size(200, 25),
+            Size = new Size(200, 31),
             Text = "Check for csproj files",
             Name = "checkCsprojButton"
         };
@@ -145,11 +150,11 @@ public partial class MainForm : Form
             Name = "statusLabel"
         };
         
-        // Cancel Button
+        // Cancel Button (height increased by 25%)
         cancelButton = new Button
         {
             Location = new Point(860, 478),
-            Size = new Size(100, 25),
+            Size = new Size(100, 31),
             Text = "Cancel",
             Name = "cancelButton",
             Enabled = false
@@ -173,16 +178,255 @@ public partial class MainForm : Form
     
     private void BrowseButton_Click(object? sender, EventArgs e)
     {
-        // Placeholder - no business logic yet
+        using var folderBrowserDialog = new FolderBrowserDialog
+        {
+            Description = "Select folder to scan for .csproj files",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
+        };
+        
+        if (!string.IsNullOrWhiteSpace(folderPathTextBox.Text) && Directory.Exists(folderPathTextBox.Text))
+        {
+            folderBrowserDialog.SelectedPath = folderPathTextBox.Text;
+        }
+        
+        if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
+        {
+            folderPathTextBox.Text = folderBrowserDialog.SelectedPath;
+        }
     }
     
-    private void CheckCsprojButton_Click(object? sender, EventArgs e)
+    private async void CheckCsprojButton_Click(object? sender, EventArgs e)
     {
-        // Placeholder - no business logic yet
+        var folderPath = folderPathTextBox.Text;
+        
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            MessageBox.Show("Please select a folder to scan.", "No Folder Selected", 
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        
+        if (!Directory.Exists(folderPath))
+        {
+            MessageBox.Show("The selected folder does not exist.", "Invalid Folder", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        
+        // Clear existing data
+        projectsGridView.Rows.Clear();
+        
+        // Setup cancellation token
+        _cancellationTokenSource = new CancellationTokenSource();
+        
+        // Update UI state
+        checkCsprojButton.Enabled = false;
+        browseButton.Enabled = false;
+        cancelButton.Enabled = true;
+        statusLabel.Text = "Scanning...";
+        
+        try
+        {
+            await ScanForCsprojFilesAsync(folderPath, _cancellationTokenSource.Token);
+            
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                statusLabel.Text = "Scan cancelled";
+            }
+            else
+            {
+                statusLabel.Text = $"Scan complete. Found {projectsGridView.Rows.Count} project(s)";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            statusLabel.Text = "Scan cancelled";
+        }
+        catch (Exception ex)
+        {
+            statusLabel.Text = "Error during scan";
+            MessageBox.Show($"An error occurred during scanning: {ex.Message}", "Scan Error", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            // Restore UI state
+            checkCsprojButton.Enabled = true;
+            browseButton.Enabled = true;
+            cancelButton.Enabled = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
     }
     
     private void CancelButton_Click(object? sender, EventArgs e)
     {
-        // Placeholder - no business logic yet
+        _cancellationTokenSource?.Cancel();
+        cancelButton.Enabled = false;
+        statusLabel.Text = "Cancelling...";
+    }
+    
+    private async Task ScanForCsprojFilesAsync(string folderPath, CancellationToken cancellationToken)
+    {
+        await ScanDirectoryAsync(folderPath, cancellationToken);
+    }
+    
+    private async Task ScanDirectoryAsync(string directoryPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        
+        // Search for .csproj files in current directory
+        try
+        {
+            var csprojFiles = Directory.GetFiles(directoryPath, "*.csproj", SearchOption.TopDirectoryOnly);
+            
+            foreach (var csprojFile in csprojFiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                var projectInfo = await ParseCsprojFileAsync(csprojFile, cancellationToken);
+                
+                // Update UI on UI thread
+                this.Invoke(() =>
+                {
+                    projectsGridView.Rows.Add(
+                        projectInfo.FullPath,
+                        projectInfo.Style,
+                        projectInfo.TargetFrameworks,
+                        projectInfo.Changed
+                    );
+                    
+                    statusLabel.Text = $"Scanning... Found {projectsGridView.Rows.Count} project(s)";
+                });
+                
+                // Small delay to allow UI to update smoothly
+                await Task.Delay(10, cancellationToken);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Skip directories we don't have access to
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        
+        // Recursively scan subdirectories
+        try
+        {
+            var subdirectories = Directory.GetDirectories(directoryPath);
+            
+            foreach (var subdirectory in subdirectories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ScanDirectoryAsync(subdirectory, cancellationToken);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Skip directories we don't have access to
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+    }
+    
+    private async Task<ProjectInfo> ParseCsprojFileAsync(string filePath, CancellationToken cancellationToken)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var doc = XDocument.Load(filePath);
+                var root = doc.Root;
+                
+                if (root == null)
+                {
+                    return new ProjectInfo
+                    {
+                        FullPath = filePath,
+                        Style = "Unknown",
+                        TargetFrameworks = "Unknown",
+                        Changed = ""
+                    };
+                }
+                
+                // Determine if SDK-style or Old-style
+                bool isSdkStyle = root.Attribute("Sdk") != null;
+                string style = isSdkStyle ? "SDK" : "Old-style";
+                
+                // Parse target frameworks
+                string targetFrameworks = ParseTargetFrameworks(root);
+                
+                return new ProjectInfo
+                {
+                    FullPath = filePath,
+                    Style = style,
+                    TargetFrameworks = targetFrameworks,
+                    Changed = ""
+                };
+            }
+            catch
+            {
+                return new ProjectInfo
+                {
+                    FullPath = filePath,
+                    Style = "Error",
+                    TargetFrameworks = "Error",
+                    Changed = ""
+                };
+            }
+        }, cancellationToken);
+    }
+    
+    private string ParseTargetFrameworks(XElement root)
+    {
+        XNamespace ns = root.GetDefaultNamespace();
+        
+        // Look for TargetFrameworks (plural) first
+        var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
+        if (targetFrameworksElement != null)
+        {
+            var value = targetFrameworksElement.Value.Trim();
+            if (value.StartsWith("$"))
+            {
+                // Variable token
+                return value;
+            }
+            return value;
+        }
+        
+        // Look for TargetFramework (singular)
+        var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
+        if (targetFrameworkElement != null)
+        {
+            var value = targetFrameworkElement.Value.Trim();
+            if (value.StartsWith("$"))
+            {
+                // Variable token (e.g., $(TargetFramework))
+                return value;
+            }
+            return value;
+        }
+        
+        // Look for TargetFrameworkVersion (old-style projects)
+        var targetFrameworkVersionElement = root.Descendants(ns + "TargetFrameworkVersion").FirstOrDefault();
+        if (targetFrameworkVersionElement != null)
+        {
+            return targetFrameworkVersionElement.Value.Trim();
+        }
+        
+        return "Not specified";
+    }
+    
+    private class ProjectInfo
+    {
+        public string FullPath { get; set; } = "";
+        public string Style { get; set; } = "";
+        public string TargetFrameworks { get; set; } = "";
+        public string Changed { get; set; } = "";
     }
 }
