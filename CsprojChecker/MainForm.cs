@@ -1512,7 +1512,6 @@ public partial class MainForm : Form
             if (isWinForms)
             {
                 propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-                propertyGroup.Add(new XElement("EnableWindowsTargeting", "true"));
             }
 
             // Add common properties
