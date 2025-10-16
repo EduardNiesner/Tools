@@ -21,7 +21,7 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 7 - Convert SDK → Old-style [constrained])
+### Current (Step 8 - Polish and resilience)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
@@ -34,7 +34,17 @@ dotnet run --project CsprojChecker
 - **Framework Operations:**
   - "Change target framework" button (enabled only when all selected rows have identical TFM sets)
   - Target framework ComboBox (prefilled with exact TFMs from selection, semicolon-separated)
+  - **ComboBox Suggestions**: Populated with common TFMs (net9.0, net8.0, etc.) and discovered variables from scanned projects
   - TFM comparison: order-insensitive and case-insensitive for literals (e.g., net9;net8 equals net8;net9), exact match for variables
+  - **Change TFM functionality:**
+    - Replaces target framework(s) for selected projects
+    - Works with both single and multiple targets
+    - Handles TargetFramework ↔ TargetFrameworks conversion automatically
+    - Removes conflicting TF/TFs elements
+    - Confirmation dialog before applying changes
+    - Results dialog showing successful/failed updates
+    - Updates grid with new TFM values
+    - Highlights changed rows in green with checkmark
   - "Append target framework" button (enabled only when all selected rows are SDK-style)
   - Append target framework ComboBox (for entering TFMs to append)
   - **Append functionality:**
@@ -80,9 +90,26 @@ dotnet run --project CsprojChecker
     - Results dialog showing successful/failed/skipped conversions
     - Updates grid with new Style and TFM values
     - Highlights changed rows in green with checkmark
+- **Context Menu:**
+  - Right-click on grid rows to access context menu
+  - "Open containing folder" - Opens the project's folder in Windows Explorer
+  - "Copy path" - Copies selected project path(s) to clipboard
+  - Double-click on row to open .csproj file in default editor
+- **Export to CSV:**
+  - "Export CSV" button to export grid data
+  - Generates timestamped CSV files
+  - Properly escapes special characters (commas, quotes, newlines)
+  - Includes all columns (Full Path, Style, Target Framework(s), Changed)
+- **Robust XML Operations:**
+  - Preserves original file encoding (UTF-8, UTF-8 with BOM, etc.)
+  - Removes conflicting TargetFramework/TargetFrameworks elements
+  - Minimizes file churn with consistent formatting
+  - Handles read-only files gracefully with clear error messages
+  - Handles locked files with appropriate error reporting
+  - Proper indentation and XML declaration handling
 
 ### Planned
-- Framework operations functionality (Change TFM)
+- None - all planned features implemented!
 
 ## Project Structure
 
@@ -112,20 +139,36 @@ Uses XML parsing to determine project characteristics:
 ### UI Features
 - **Browse Button**: Opens folder browser dialog with memory of last path
 - **Check Button**: Initiates async scan with real-time updates
+- **Export CSV Button**: Exports current grid data to CSV file
 - **Cancel Button**: Stops in-progress scans
-- **Status Label**: Shows progress during scans
+- **Status Label**: Shows progress during scans and operation results
 - **Button Heights**: Increased by 25% for better visibility
 - **Responsive Layout**: All controls properly anchored for full-screen usage
 - **DataGridView**: Expands to fill available space for viewing long paths
+- **Context Menu**: Right-click on rows for "Open containing folder" and "Copy path" options
+- **Double-Click**: Opens .csproj file in default editor
 
 ### Framework Operations
 - **Selection-based Enablement**: The "Change target framework" button and ComboBox are only enabled when:
   - One or more rows are selected
   - All selected rows have identical TFM sets (compared using order-insensitive and case-insensitive logic for literals, exact match for variables)
+- **ComboBox Suggestions**: Both target framework ComboBoxes are populated with:
+  - Common TFMs: net9.0, net8.0, net7.0, net6.0, net5.0, netcoreapp3.1, netstandard2.1/2.0, net48-net45 (with and without -windows suffix)
+  - Discovered variables: Any variables (e.g., `$(TargetFrameworks)`) found during project scanning are automatically added
 - **TFM Comparison Rules**:
   - **Order-insensitive**: `net6.0;net7.0;net8.0` equals `net8.0;net7.0;net6.0`
   - **Case-insensitive for literals**: `NET6.0;NET7.0` equals `net6.0;net7.0`
   - **Exact match for variables**: `$(TargetFrameworks)` only matches `$(TargetFrameworks)` exactly
   - **Mixed sets**: Sets containing variables (like `net8.0;$(TargetFrameworks)`) require exact match
-- **ComboBox Prefill**: When enabled, the ComboBox displays the exact TFMs from the selected rows (semicolon-separated), preserving the order and format from the csproj file
+- **ComboBox Prefill**: When enabled, the "Change target framework" ComboBox displays the exact TFMs from the selected rows (semicolon-separated), preserving the order and format from the csproj file
 - **Empty TFMs**: Projects without TargetFramework/TargetFrameworks display an empty cell in the grid
+
+### Robust XML Operations
+- **Encoding Preservation**: Detects and preserves original file encoding (UTF-8, UTF-8 with BOM, etc.)
+- **Conflict Resolution**: Automatically removes conflicting TargetFramework/TargetFrameworks elements when switching between single and multiple targets
+- **Formatting**: Maintains consistent XML formatting with proper indentation (2 spaces)
+- **Error Handling**:
+  - Detects and reports read-only files with clear error messages
+  - Handles locked files gracefully with appropriate error reporting
+  - Specific exception handling for file access issues vs. other errors
+- **Minimal Churn**: Preserves whitespace and declaration settings to minimize unnecessary file changes
