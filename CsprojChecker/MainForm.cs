@@ -16,6 +16,8 @@ public partial class MainForm : Form
     // Framework operations controls
     private Button changeTargetFrameworkButton = null!;
     private ComboBox targetFrameworkComboBox = null!;
+    private Button appendTargetFrameworkButton = null!;
+    private ComboBox appendTargetFrameworkComboBox = null!;
     
     // Placeholder controls for Project style conversions region
     private Label projectStylePlaceholderLabel = null!;
@@ -114,7 +116,7 @@ public partial class MainForm : Form
         frameworkOperationsGroupBox = new GroupBox
         {
             Location = new Point(20, 320),
-            Size = new Size(460, 110),
+            Size = new Size(460, 160),
             Text = "Framework Operations",
             Name = "frameworkOperationsGroupBox",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left
@@ -141,14 +143,37 @@ public partial class MainForm : Form
             Enabled = false
         };
         
+        // Append target framework button
+        appendTargetFrameworkButton = new Button
+        {
+            Location = new Point(10, 95),
+            Size = new Size(200, 31),
+            Text = "Append target framework",
+            Name = "appendTargetFrameworkButton",
+            Enabled = false
+        };
+        appendTargetFrameworkButton.Click += AppendTargetFrameworkButton_Click;
+        
+        // Append target framework ComboBox
+        appendTargetFrameworkComboBox = new ComboBox
+        {
+            Location = new Point(220, 95),
+            Size = new Size(225, 23),
+            Name = "appendTargetFrameworkComboBox",
+            DropDownStyle = ComboBoxStyle.DropDown,
+            Enabled = false
+        };
+        
         frameworkOperationsGroupBox.Controls.Add(changeTargetFrameworkButton);
         frameworkOperationsGroupBox.Controls.Add(targetFrameworkComboBox);
+        frameworkOperationsGroupBox.Controls.Add(appendTargetFrameworkButton);
+        frameworkOperationsGroupBox.Controls.Add(appendTargetFrameworkComboBox);
         
         // Project style conversions GroupBox
         projectStyleGroupBox = new GroupBox
         {
             Location = new Point(500, 320),
-            Size = new Size(460, 150),
+            Size = new Size(460, 160),
             Text = "Project Style Conversions",
             Name = "projectStyleGroupBox",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
@@ -167,7 +192,7 @@ public partial class MainForm : Form
         // Status Label
         statusLabel = new Label
         {
-            Location = new Point(20, 480),
+            Location = new Point(20, 490),
             Size = new Size(840, 23),
             Text = "Ready",
             Name = "statusLabel",
@@ -177,7 +202,7 @@ public partial class MainForm : Form
         // Cancel Button (height increased by 25%)
         cancelButton = new Button
         {
-            Location = new Point(860, 478),
+            Location = new Point(860, 488),
             Size = new Size(100, 31),
             Text = "Cancel",
             Name = "cancelButton",
@@ -448,6 +473,95 @@ public partial class MainForm : Form
             "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
     
+    private async void AppendTargetFrameworkButton_Click(object? sender, EventArgs e)
+    {
+        var appendValue = appendTargetFrameworkComboBox.Text.Trim();
+        
+        if (string.IsNullOrWhiteSpace(appendValue))
+        {
+            MessageBox.Show("Please enter a target framework to append.", "No Framework Specified",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        
+        // Get selected SDK-style projects
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+        
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var style = row.Cells["Style"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+            
+            if (style == "SDK")
+            {
+                selectedProjects.Add((row.Index, filePath, currentTfms));
+            }
+        }
+        
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+        
+        // Show confirmation dialog
+        var confirmMessage = $"Are you sure you want to append '{appendValue}' to {selectedProjects.Count} project(s)?";
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Append",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+        
+        // Apply changes
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+        
+        foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
+        {
+            try
+            {
+                var newTfms = AppendTfmValue(currentTfms, appendValue);
+                
+                // Write to file
+                await WriteTfmToFileAsync(filePath, newTfms);
+                
+                // Update grid
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+        
+        // Show results
+        var resultMessage = $"Append completed:\n\n" +
+                          $"Successful: {successCount}\n" +
+                          $"Errors: {errorCount}\n\n" +
+                          string.Join("\n", results.Take(10));
+        
+        if (results.Count > 10)
+        {
+            resultMessage += $"\n\n... and {results.Count - 10} more";
+        }
+        
+        MessageBox.Show(resultMessage, "Append Results",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        
+        // Refresh selection state
+        UpdateFrameworkOperationsState();
+    }
+    
     private void UpdateFrameworkOperationsState()
     {
         if (projectsGridView.SelectedRows.Count == 0)
@@ -455,17 +569,25 @@ public partial class MainForm : Form
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
             targetFrameworkComboBox.Text = "";
+            appendTargetFrameworkButton.Enabled = false;
+            appendTargetFrameworkComboBox.Enabled = false;
             return;
         }
         
         // Collect TFM values from all selected rows
         List<string> tfmValues = new List<string>();
+        bool allSdkStyle = true;
         
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             if (row.Cells["TargetFrameworks"].Value is string tfmValue)
             {
                 tfmValues.Add(tfmValue);
+            }
+            
+            if (row.Cells["Style"].Value is string styleValue && styleValue != "SDK")
+            {
+                allSdkStyle = false;
             }
         }
         
@@ -474,6 +596,8 @@ public partial class MainForm : Form
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
             targetFrameworkComboBox.Text = "";
+            appendTargetFrameworkButton.Enabled = false;
+            appendTargetFrameworkComboBox.Enabled = false;
             return;
         }
         
@@ -506,6 +630,262 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Enabled = false;
             targetFrameworkComboBox.Text = "";
         }
+        
+        // Enable Append button only if all selected rows are SDK-style
+        if (allSdkStyle)
+        {
+            appendTargetFrameworkButton.Enabled = true;
+            appendTargetFrameworkComboBox.Enabled = true;
+        }
+        else
+        {
+            appendTargetFrameworkButton.Enabled = false;
+            appendTargetFrameworkComboBox.Enabled = false;
+        }
+    }
+    
+    private string AppendTfmValue(string currentTfms, string appendValue)
+    {
+        // Parse the append value to extract individual TFMs
+        var appendTokens = ParseTfmTokens(appendValue);
+        
+        // Parse existing TFMs to extract individual tokens
+        var existingTokens = ParseTfmTokens(currentTfms);
+        
+        // Combine and deduplicate
+        var allTokens = new List<TfmToken>();
+        allTokens.AddRange(existingTokens);
+        
+        foreach (var appendToken in appendTokens)
+        {
+            bool isDuplicate = false;
+            
+            foreach (var existingToken in allTokens)
+            {
+                if (AreTfmTokensEqual(appendToken, existingToken))
+                {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate)
+            {
+                allTokens.Add(appendToken);
+            }
+        }
+        
+        // Sort tokens: variables first (in original order), then literals (sorted)
+        var variables = allTokens.Where(t => t.IsVariable).ToList();
+        var literals = allTokens.Where(t => !t.IsVariable)
+                                .OrderBy(t => GetSortOrder(t.Value))
+                                .ThenBy(t => t.Value.ToLowerInvariant())
+                                .ToList();
+        
+        var sortedTokens = variables.Concat(literals).ToList();
+        
+        // Join tokens back into a semicolon-separated string
+        return string.Join(";", sortedTokens.Select(t => t.Value));
+    }
+    
+    private List<TfmToken> ParseTfmTokens(string tfmValue)
+    {
+        var tokens = new List<TfmToken>();
+        
+        if (string.IsNullOrWhiteSpace(tfmValue))
+        {
+            return tokens;
+        }
+        
+        var parts = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                           .Select(p => p.Trim())
+                           .Where(p => !string.IsNullOrEmpty(p));
+        
+        foreach (var part in parts)
+        {
+            var token = new TfmToken
+            {
+                Value = part,
+                IsVariable = part.StartsWith("$")
+            };
+            
+            // Apply WinForms autocorrection for literal nets
+            if (!token.IsVariable && IsNetFrameworkToken(part))
+            {
+                token.Value = ApplyWinFormsAutocorrection(part);
+            }
+            
+            tokens.Add(token);
+        }
+        
+        return tokens;
+    }
+    
+    private bool IsNetFrameworkToken(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        // Check if it looks like a .NET Framework version (net followed by digits and optional decimals)
+        return lower.StartsWith("net") && 
+               lower.Length > 3 && 
+               char.IsDigit(lower[3]) &&
+               !lower.Contains("-"); // Exclude net6.0-windows style
+    }
+    
+    private string ApplyWinFormsAutocorrection(string tfm)
+    {
+        var lower = tfm.ToLowerInvariant();
+        
+        // Common .NET Framework versions that should have -windows suffix for WinForms
+        // We'll add -windows if it's a modern .NET version (net5.0+) without existing platform suffix
+        if (lower.StartsWith("net") && !lower.Contains("-"))
+        {
+            // Extract version number
+            var versionPart = lower.Substring(3);
+            
+            // Check if it's a modern .NET version (5.0 or higher)
+            if (versionPart.StartsWith("5") || versionPart.StartsWith("6") || 
+                versionPart.StartsWith("7") || versionPart.StartsWith("8") || 
+                versionPart.StartsWith("9"))
+            {
+                // Add -windows suffix for WinForms projects
+                return tfm + "-windows";
+            }
+        }
+        
+        return tfm;
+    }
+    
+    private bool AreTfmTokensEqual(TfmToken token1, TfmToken token2)
+    {
+        // Variables require exact match (case-sensitive)
+        if (token1.IsVariable && token2.IsVariable)
+        {
+            return token1.Value == token2.Value;
+        }
+        
+        // If one is variable and other is not, they're not equal
+        if (token1.IsVariable != token2.IsVariable)
+        {
+            return false;
+        }
+        
+        // Literals are case-insensitive
+        return string.Equals(token1.Value, token2.Value, StringComparison.OrdinalIgnoreCase);
+    }
+    
+    private int GetSortOrder(string tfm)
+    {
+        var lower = tfm.ToLowerInvariant();
+        
+        // Extract version number for sorting
+        // Priority: newer versions first
+        if (lower.StartsWith("net"))
+        {
+            var versionPart = lower.Substring(3);
+            
+            // Try to parse version number
+            if (versionPart.Length > 0 && char.IsDigit(versionPart[0]))
+            {
+                // Extract numeric part
+                var numericPart = "";
+                foreach (var ch in versionPart)
+                {
+                    if (char.IsDigit(ch) || ch == '.')
+                    {
+                        numericPart += ch;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                if (double.TryParse(numericPart, out var version))
+                {
+                    // Return negative to sort descending (newer first)
+                    return -(int)(version * 10);
+                }
+            }
+        }
+        
+        return 0;
+    }
+    
+    private async Task WriteTfmToFileAsync(string filePath, string newTfms)
+    {
+        await Task.Run(() =>
+        {
+            var doc = XDocument.Load(filePath);
+            var root = doc.Root;
+            
+            if (root == null)
+            {
+                throw new InvalidOperationException("Invalid project file");
+            }
+            
+            XNamespace ns = root.GetDefaultNamespace();
+            
+            // Look for existing TargetFramework or TargetFrameworks element
+            var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
+            var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
+            
+            // Determine if we need singular or plural based on the new value
+            bool isMultiple = newTfms.Contains(';');
+            
+            if (isMultiple)
+            {
+                // We need TargetFrameworks (plural)
+                if (targetFrameworksElement != null)
+                {
+                    // Update existing TargetFrameworks
+                    targetFrameworksElement.Value = newTfms;
+                }
+                else if (targetFrameworkElement != null)
+                {
+                    // Convert TargetFramework to TargetFrameworks
+                    targetFrameworkElement.Name = ns + "TargetFrameworks";
+                    targetFrameworkElement.Value = newTfms;
+                }
+                else
+                {
+                    // Create new TargetFrameworks element in the first PropertyGroup
+                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
+                    if (propertyGroup == null)
+                    {
+                        propertyGroup = new XElement(ns + "PropertyGroup");
+                        root.Add(propertyGroup);
+                    }
+                    propertyGroup.Add(new XElement(ns + "TargetFrameworks", newTfms));
+                }
+            }
+            else
+            {
+                // Single framework - use TargetFramework (singular) or keep TargetFrameworks if it already exists
+                if (targetFrameworksElement != null)
+                {
+                    // Keep it as TargetFrameworks even for single value
+                    targetFrameworksElement.Value = newTfms;
+                }
+                else if (targetFrameworkElement != null)
+                {
+                    // Update existing TargetFramework
+                    targetFrameworkElement.Value = newTfms;
+                }
+                else
+                {
+                    // Create new TargetFramework element in the first PropertyGroup
+                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
+                    if (propertyGroup == null)
+                    {
+                        propertyGroup = new XElement(ns + "PropertyGroup");
+                        root.Add(propertyGroup);
+                    }
+                    propertyGroup.Add(new XElement(ns + "TargetFramework", newTfms));
+                }
+            }
+            
+            doc.Save(filePath);
+        });
     }
     
     private NormalizedTfmSet NormalizeTfmSet(string tfmValue)
@@ -602,6 +982,12 @@ public partial class MainForm : Form
             }
             return hashCode;
         }
+    }
+    
+    private class TfmToken
+    {
+        public string Value { get; set; } = "";
+        public bool IsVariable { get; set; }
     }
     
     private class ProjectInfo
