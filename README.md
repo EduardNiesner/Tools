@@ -21,7 +21,7 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 2 - Recursive Scan with Real-time Updates)
+### Current (Step 3 - Variable TFM token support and selection enablement)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
@@ -31,7 +31,13 @@ dotnet run --project CsprojChecker
 - Status label showing scan progress
 - Cancel button to stop scans in progress
 - No UI freezing during large scans
-- Framework operations region (placeholder)
+- **Framework Operations:**
+  - Configurable Variable TFM token TextBox (default: `$(TargetFrameworks)`)
+  - Display inherited TFMs using the configured token
+  - "Change target framework" button (enabled when all selected rows share the same normalized TFM set)
+  - Target framework ComboBox (prefilled with common TFM set when enabled)
+  - TFM normalization: order-insensitive, case-insensitive for literals, exact match for variables
+- **Responsive GUI:** Full screen support with proper anchoring for all controls
 - Project style conversions region (placeholder)
 
 ### Planned
@@ -68,3 +74,17 @@ Uses XML parsing to determine project characteristics:
 - **Cancel Button**: Stops in-progress scans
 - **Status Label**: Shows progress during scans
 - **Button Heights**: Increased by 25% for better visibility
+- **Responsive Layout**: All controls properly anchored for full-screen usage
+- **DataGridView**: Expands to fill available space for viewing long paths
+
+### Framework Operations
+- **Variable TFM Token TextBox**: Configure the variable token used for inherited TFMs (default: `$(TargetFrameworks)`)
+- **Selection-based Enablement**: The "Change target framework" button and ComboBox are only enabled when:
+  - One or more rows are selected
+  - All selected rows have the same normalized TFM set
+- **TFM Normalization Rules**:
+  - **Order-insensitive**: `net6.0;net7.0;net8.0` equals `net8.0;net7.0;net6.0`
+  - **Case-insensitive for literals**: `NET6.0;NET7.0` equals `net6.0;net7.0`
+  - **Exact match for variables**: `$(TargetFrameworks)` only matches `$(TargetFrameworks)` exactly
+  - **Variable vs Literal**: Variable tokens and literal TFMs are never equal
+- **ComboBox Prefill**: When enabled, the ComboBox is automatically populated with the common TFM set from selected rows
