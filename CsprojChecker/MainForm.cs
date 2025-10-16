@@ -21,6 +21,7 @@ public partial class MainForm : Form
     
     // Project style conversion controls
     private Button convertToSdkButton = null!;
+    private Button convertToOldStyleButton = null!;
     
     // For cancellation support
     private CancellationTokenSource? _cancellationTokenSource;
@@ -190,6 +191,18 @@ public partial class MainForm : Form
         };
         convertToSdkButton.Click += ConvertToSdkButton_Click;
         projectStyleGroupBox.Controls.Add(convertToSdkButton);
+        
+        // Convert to Old-style button
+        convertToOldStyleButton = new Button
+        {
+            Location = new Point(10, 65),
+            Size = new Size(250, 31),
+            Text = "Convert SDK → Old-style",
+            Name = "convertToOldStyleButton",
+            Enabled = false
+        };
+        convertToOldStyleButton.Click += ConvertToOldStyleButton_Click;
+        projectStyleGroupBox.Controls.Add(convertToOldStyleButton);
         
         // Status Label
         statusLabel = new Label
@@ -648,6 +661,145 @@ public partial class MainForm : Form
         UpdateFrameworkOperationsState();
     }
     
+    private async void ConvertToOldStyleButton_Click(object? sender, EventArgs e)
+    {
+        // Get selected SDK-style projects
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms, string currentStyle)>();
+        
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var style = row.Cells["Style"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+            
+            if (style == "SDK")
+            {
+                selectedProjects.Add((row.Index, filePath, currentTfms, style));
+            }
+        }
+        
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+        
+        // Validate constraints and identify projects that can be converted
+        var validProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+        var skippedProjects = new List<(string fileName, string reason)>();
+        
+        foreach (var (rowIndex, filePath, currentTfms, currentStyle) in selectedProjects)
+        {
+            // Check if already Old-style (shouldn't happen due to button enablement, but check anyway)
+            if (currentStyle == "Old-style")
+            {
+                skippedProjects.Add((Path.GetFileName(filePath), "Already Old-style"));
+                continue;
+            }
+            
+            // Check constraints
+            var validationResult = ValidateSdkToOldStyleConstraints(filePath, currentTfms);
+            
+            if (validationResult.IsValid)
+            {
+                validProjects.Add((rowIndex, filePath, currentTfms));
+            }
+            else
+            {
+                skippedProjects.Add((Path.GetFileName(filePath), validationResult.Reason));
+            }
+        }
+        
+        if (validProjects.Count == 0)
+        {
+            // All projects were skipped
+            var skipMessage = "No projects can be converted. Reasons:\n\n" +
+                            string.Join("\n", skippedProjects.Take(10).Select(p => $"✗ {p.fileName}: {p.reason}"));
+            
+            if (skippedProjects.Count > 10)
+            {
+                skipMessage += $"\n\n... and {skippedProjects.Count - 10} more";
+            }
+            
+            MessageBox.Show(skipMessage, "Conversion Blocked",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        
+        // Show confirmation dialog
+        var confirmMessage = $"Are you sure you want to convert {validProjects.Count} SDK-style project(s) to Old-style?\n\n" +
+                           "This will:\n" +
+                           "- Convert the project file to Old-style format\n" +
+                           "- Map SDK-style framework versions (net4x) to old-style (v4.x)\n" +
+                           "- Preserve variable tokens verbatim\n" +
+                           "- Restore legacy project structure";
+        
+        if (skippedProjects.Count > 0)
+        {
+            confirmMessage += $"\n\nNote: {skippedProjects.Count} project(s) will be skipped due to constraint violations.";
+        }
+        
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Conversion",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+        
+        // Apply changes
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+        
+        foreach (var (rowIndex, filePath, currentTfms) in validProjects)
+        {
+            try
+            {
+                // Convert the project file
+                var newTfms = await ConvertSdkToOldStyleAsync(filePath, currentTfms);
+                
+                // Update grid
+                projectsGridView.Rows[rowIndex].Cells["Style"].Value = "Old-style";
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+        
+        // Add skipped projects to results
+        foreach (var (fileName, reason) in skippedProjects)
+        {
+            results.Add($"⊘ {fileName}: Skipped - {reason}");
+        }
+        
+        // Show results
+        var resultMessage = $"Conversion completed:\n\n" +
+                          $"Successful: {successCount}\n" +
+                          $"Errors: {errorCount}\n" +
+                          $"Skipped: {skippedProjects.Count}\n\n" +
+                          string.Join("\n", results.Take(10));
+        
+        if (results.Count > 10)
+        {
+            resultMessage += $"\n\n... and {results.Count - 10} more";
+        }
+        
+        MessageBox.Show(resultMessage, "Conversion Results",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        
+        // Refresh selection state
+        UpdateFrameworkOperationsState();
+    }
+    
     private void UpdateFrameworkOperationsState()
     {
         if (projectsGridView.SelectedRows.Count == 0)
@@ -658,6 +810,7 @@ public partial class MainForm : Form
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
             convertToSdkButton.Enabled = false;
+            convertToOldStyleButton.Enabled = false;
             return;
         }
         
@@ -694,6 +847,7 @@ public partial class MainForm : Form
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
             convertToSdkButton.Enabled = false;
+            convertToOldStyleButton.Enabled = false;
             return;
         }
         
@@ -747,6 +901,16 @@ public partial class MainForm : Form
         else
         {
             convertToSdkButton.Enabled = false;
+        }
+        
+        // Enable Convert to Old-style button only if all selected rows are SDK-style
+        if (allSdkStyle)
+        {
+            convertToOldStyleButton.Enabled = true;
+        }
+        else
+        {
+            convertToOldStyleButton.Enabled = false;
         }
     }
     
@@ -1183,6 +1347,290 @@ public partial class MainForm : Form
         }
         
         // If it doesn't start with 'v', return as-is
+        return trimmed;
+    }
+    
+    private (bool IsValid, string Reason) ValidateSdkToOldStyleConstraints(string filePath, string currentTfms)
+    {
+        try
+        {
+            var doc = XDocument.Load(filePath);
+            var root = doc.Root;
+            
+            if (root == null)
+            {
+                return (false, "Invalid project file");
+            }
+            
+            // Skip if already Old-style
+            if (root.Attribute("Sdk") == null)
+            {
+                return (false, "Already Old-style");
+            }
+            
+            XNamespace ns = root.GetDefaultNamespace();
+            
+            // Check for PackageReference items
+            var packageReferences = root.Descendants(ns + "PackageReference").ToList();
+            if (packageReferences.Count > 0)
+            {
+                return (false, $"Has {packageReferences.Count} PackageReference(s)");
+            }
+            
+            // Check if it's a single .NET Framework target
+            // Variable tokens are allowed and preserved
+            if (currentTfms.StartsWith("$"))
+            {
+                // It's a variable token - allow it (will be preserved verbatim)
+                return (true, "");
+            }
+            
+            // Check if multiple targets
+            if (currentTfms.Contains(";"))
+            {
+                return (false, "Multiple target frameworks");
+            }
+            
+            // Check if it's a .NET Framework target (net40–net48 or net40-windows–net48-windows)
+            var tfmLower = currentTfms.ToLowerInvariant();
+            
+            if (!IsNetFrameworkTarget(tfmLower))
+            {
+                return (false, "Not a .NET Framework target");
+            }
+            
+            return (true, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Error: {ex.Message}");
+        }
+    }
+    
+    private bool IsNetFrameworkTarget(string tfm)
+    {
+        // Remove -windows suffix if present
+        var baseTfm = tfm.Replace("-windows", "");
+        
+        // Check if it's in the range net40–net48
+        var validTargets = new[]
+        {
+            "net40", "net403",
+            "net45", "net451", "net452",
+            "net46", "net461", "net462",
+            "net47", "net471", "net472",
+            "net48", "net481"
+        };
+        
+        return validTargets.Contains(baseTfm);
+    }
+    
+    private async Task<string> ConvertSdkToOldStyleAsync(string filePath, string currentTfm)
+    {
+        return await Task.Run(() =>
+        {
+            var doc = XDocument.Load(filePath);
+            var root = doc.Root;
+            
+            if (root == null)
+            {
+                throw new InvalidOperationException("Invalid project file");
+            }
+            
+            // Check if already Old-style
+            if (root.Attribute("Sdk") == null)
+            {
+                // Already Old-style, skip
+                return ParseTargetFrameworks(root);
+            }
+            
+            XNamespace ns = root.GetDefaultNamespace();
+            XNamespace msbuildNs = "http://schemas.microsoft.com/developer/msbuild/2003";
+            
+            // Convert framework version from SDK-style to Old-style
+            string newTfm = ConvertSdkToOldStyleFrameworkVersion(currentTfm);
+            
+            // Detect if it's a WinForms project
+            bool isWinForms = IsWinFormsInSdkProject(root, ns);
+            
+            // Create new Old-style project
+            var newRoot = new XElement(msbuildNs + "Project");
+            newRoot.Add(new XAttribute("ToolsVersion", "15.0"));
+            
+            // Default xmlns attribute
+            newRoot.Add(new XAttribute("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003"));
+            
+            // Import Microsoft.CSharp.targets at the beginning
+            var importGroup1 = new XElement(msbuildNs + "Import");
+            importGroup1.Add(new XAttribute("Project", @"$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"));
+            importGroup1.Add(new XAttribute("Condition", @"Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"));
+            newRoot.Add(importGroup1);
+            
+            // Create PropertyGroup with essential properties
+            var propertyGroup = new XElement(msbuildNs + "PropertyGroup");
+            
+            // Copy Configuration and Platform
+            propertyGroup.Add(new XElement(msbuildNs + "Configuration", new XAttribute("Condition", " '$(Configuration)' == '' "), "Debug"));
+            propertyGroup.Add(new XElement(msbuildNs + "Platform", new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU"));
+            
+            // Add ProjectGuid
+            propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", "{" + Guid.NewGuid().ToString().ToUpper() + "}"));
+            
+            // Add OutputType
+            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
+            if (outputType != null)
+            {
+                propertyGroup.Add(new XElement(msbuildNs + "OutputType", outputType.Value));
+            }
+            else
+            {
+                propertyGroup.Add(new XElement(msbuildNs + "OutputType", "Library"));
+            }
+            
+            // Add RootNamespace
+            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
+            if (rootNamespace != null)
+            {
+                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", rootNamespace.Value));
+            }
+            else
+            {
+                // Use file name without extension
+                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", Path.GetFileNameWithoutExtension(filePath)));
+            }
+            
+            // Add AssemblyName
+            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
+            if (assemblyName != null)
+            {
+                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", assemblyName.Value));
+            }
+            else
+            {
+                // Use file name without extension
+                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", Path.GetFileNameWithoutExtension(filePath)));
+            }
+            
+            // Add TargetFrameworkVersion
+            propertyGroup.Add(new XElement(msbuildNs + "TargetFrameworkVersion", newTfm));
+            
+            // Add FileAlignment
+            propertyGroup.Add(new XElement(msbuildNs + "FileAlignment", "512"));
+            
+            // Add Deterministic
+            propertyGroup.Add(new XElement(msbuildNs + "Deterministic", "true"));
+            
+            newRoot.Add(propertyGroup);
+            
+            // Add Debug PropertyGroup
+            var debugPropertyGroup = new XElement(msbuildNs + "PropertyGroup");
+            debugPropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugSymbols", "true"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugType", "full"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "Optimize", "false"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Debug\"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "DEBUG;TRACE"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
+            debugPropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
+            newRoot.Add(debugPropertyGroup);
+            
+            // Add Release PropertyGroup
+            var releasePropertyGroup = new XElement(msbuildNs + "PropertyGroup");
+            releasePropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "DebugType", "pdbonly"));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "Optimize", "true"));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Release\"));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "TRACE"));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
+            releasePropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
+            newRoot.Add(releasePropertyGroup);
+            
+            // Add References ItemGroup
+            var referencesGroup = new XElement(msbuildNs + "ItemGroup");
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Core")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml.Linq")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data.DataSetExtensions")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "Microsoft.CSharp")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data")));
+            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml")));
+            
+            // Add WinForms references if needed
+            if (isWinForms)
+            {
+                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Drawing")));
+                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Windows.Forms")));
+            }
+            
+            newRoot.Add(referencesGroup);
+            
+            // Import Microsoft.CSharp.targets at the end
+            var importGroup2 = new XElement(msbuildNs + "Import");
+            importGroup2.Add(new XAttribute("Project", @"$(MSBuildToolsPath)\Microsoft.CSharp.targets"));
+            newRoot.Add(importGroup2);
+            
+            // Create new document
+            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
+            
+            // Save the new document
+            newDoc.Save(filePath);
+            
+            return newTfm;
+        });
+    }
+    
+    private bool IsWinFormsInSdkProject(XElement root, XNamespace ns)
+    {
+        // Check for UseWindowsForms property
+        var useWindowsForms = root.Descendants(ns + "UseWindowsForms").FirstOrDefault();
+        if (useWindowsForms != null && useWindowsForms.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    private string ConvertSdkToOldStyleFrameworkVersion(string sdkTfm)
+    {
+        // Handle variable tokens - preserve them verbatim
+        if (sdkTfm.StartsWith("$"))
+        {
+            return sdkTfm;
+        }
+        
+        // Map SDK-style versions to Old-style
+        // Examples: net45 → v4.5, net472 → v4.7.2, net48-windows → v4.8
+        var trimmed = sdkTfm.Trim().ToLowerInvariant();
+        
+        // Remove -windows suffix if present
+        trimmed = trimmed.Replace("-windows", "");
+        
+        if (trimmed.StartsWith("net"))
+        {
+            // Remove 'net' prefix
+            var version = trimmed.Substring(3);
+            
+            // Add dots back
+            // net45 → 4.5, net472 → 4.7.2
+            if (version.Length == 2)
+            {
+                // net40 → v4.0, net45 → v4.5
+                return $"v{version[0]}.{version[1]}";
+            }
+            else if (version.Length == 3)
+            {
+                // net403 → v4.0.3, net451 → v4.5.1, net462 → v4.6.2, net472 → v4.7.2, net481 → v4.8.1
+                return $"v{version[0]}.{version[1]}.{version[2]}";
+            }
+            else
+            {
+                // Fallback - return as-is
+                return sdkTfm;
+            }
+        }
+        
+        // If it doesn't start with 'net', return as-is
         return trimmed;
     }
     
