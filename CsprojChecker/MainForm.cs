@@ -14,8 +14,6 @@ public partial class MainForm : Form
     private GroupBox projectStyleGroupBox = null!;
     
     // Framework operations controls
-    private Label variableTfmTokenLabel = null!;
-    private TextBox variableTfmTokenTextBox = null!;
     private Button changeTargetFrameworkButton = null!;
     private ComboBox targetFrameworkComboBox = null!;
     
@@ -116,35 +114,16 @@ public partial class MainForm : Form
         frameworkOperationsGroupBox = new GroupBox
         {
             Location = new Point(20, 320),
-            Size = new Size(460, 150),
+            Size = new Size(460, 110),
             Text = "Framework Operations",
             Name = "frameworkOperationsGroupBox",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         };
         
-        // Variable TFM token label
-        variableTfmTokenLabel = new Label
-        {
-            Location = new Point(10, 25),
-            Size = new Size(120, 20),
-            Text = "Variable TFM Token:",
-            Name = "variableTfmTokenLabel"
-        };
-        
-        // Variable TFM token TextBox
-        variableTfmTokenTextBox = new TextBox
-        {
-            Location = new Point(135, 23),
-            Size = new Size(310, 23),
-            Text = "$(TargetFrameworks)",
-            Name = "variableTfmTokenTextBox"
-        };
-        variableTfmTokenTextBox.TextChanged += VariableTfmTokenTextBox_TextChanged;
-        
         // Change target framework button
         changeTargetFrameworkButton = new Button
         {
-            Location = new Point(10, 60),
+            Location = new Point(10, 25),
             Size = new Size(200, 31),
             Text = "Change target framework",
             Name = "changeTargetFrameworkButton",
@@ -155,15 +134,13 @@ public partial class MainForm : Form
         // Target framework ComboBox
         targetFrameworkComboBox = new ComboBox
         {
-            Location = new Point(10, 100),
+            Location = new Point(10, 65),
             Size = new Size(435, 23),
             Name = "targetFrameworkComboBox",
             DropDownStyle = ComboBoxStyle.DropDown,
             Enabled = false
         };
         
-        frameworkOperationsGroupBox.Controls.Add(variableTfmTokenLabel);
-        frameworkOperationsGroupBox.Controls.Add(variableTfmTokenTextBox);
         frameworkOperationsGroupBox.Controls.Add(changeTargetFrameworkButton);
         frameworkOperationsGroupBox.Controls.Add(targetFrameworkComboBox);
         
@@ -438,26 +415,14 @@ public partial class MainForm : Form
         var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
         if (targetFrameworksElement != null)
         {
-            var value = targetFrameworksElement.Value.Trim();
-            if (value.StartsWith("$"))
-            {
-                // Variable token
-                return value;
-            }
-            return value;
+            return targetFrameworksElement.Value.Trim();
         }
         
         // Look for TargetFramework (singular)
         var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
         if (targetFrameworkElement != null)
         {
-            var value = targetFrameworkElement.Value.Trim();
-            if (value.StartsWith("$"))
-            {
-                // Variable token (e.g., $(TargetFramework))
-                return value;
-            }
-            return value;
+            return targetFrameworkElement.Value.Trim();
         }
         
         // Look for TargetFrameworkVersion (old-style projects)
@@ -467,15 +432,11 @@ public partial class MainForm : Form
             return targetFrameworkVersionElement.Value.Trim();
         }
         
-        return "Not specified";
+        // If neither exists, return empty string
+        return "";
     }
     
     private void ProjectsGridView_SelectionChanged(object? sender, EventArgs e)
-    {
-        UpdateFrameworkOperationsState();
-    }
-    
-    private void VariableTfmTokenTextBox_TextChanged(object? sender, EventArgs e)
     {
         UpdateFrameworkOperationsState();
     }
@@ -493,66 +454,65 @@ public partial class MainForm : Form
         {
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
-            targetFrameworkComboBox.Items.Clear();
+            targetFrameworkComboBox.Text = "";
             return;
         }
         
-        // Get the variable TFM token
-        string variableTfmToken = variableTfmTokenTextBox.Text.Trim();
-        
-        // Collect normalized TFM sets from all selected rows
-        List<NormalizedTfmSet> normalizedSets = new List<NormalizedTfmSet>();
+        // Collect TFM values from all selected rows
+        List<string> tfmValues = new List<string>();
         
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             if (row.Cells["TargetFrameworks"].Value is string tfmValue)
             {
-                var normalizedSet = NormalizeTfmSet(tfmValue, variableTfmToken);
-                normalizedSets.Add(normalizedSet);
+                tfmValues.Add(tfmValue);
             }
         }
         
-        if (normalizedSets.Count == 0)
+        if (tfmValues.Count == 0)
         {
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
-            targetFrameworkComboBox.Items.Clear();
+            targetFrameworkComboBox.Text = "";
             return;
         }
         
-        // Check if all normalized sets are equal
-        bool allSetsEqual = normalizedSets.All(set => set.Equals(normalizedSets[0]));
+        // Check if all TFM sets are identical (order-insensitive, case-insensitive for literals, exact for variables)
+        bool allSetsEqual = true;
+        var firstNormalized = NormalizeTfmSet(tfmValues[0]);
+        
+        for (int i = 1; i < tfmValues.Count; i++)
+        {
+            var currentNormalized = NormalizeTfmSet(tfmValues[i]);
+            if (!firstNormalized.Equals(currentNormalized))
+            {
+                allSetsEqual = false;
+                break;
+            }
+        }
         
         if (allSetsEqual)
         {
             changeTargetFrameworkButton.Enabled = true;
             targetFrameworkComboBox.Enabled = true;
             
-            // Prefill the ComboBox with the common TFM set
-            targetFrameworkComboBox.Items.Clear();
-            foreach (var tfm in normalizedSets[0].Tfms)
-            {
-                targetFrameworkComboBox.Items.Add(tfm);
-            }
-            
-            if (targetFrameworkComboBox.Items.Count > 0)
-            {
-                targetFrameworkComboBox.SelectedIndex = 0;
-            }
+            // Prefill the ComboBox with the exact joined TFMs from the first selection
+            // (since all are identical, we can use the first one)
+            targetFrameworkComboBox.Text = tfmValues[0];
         }
         else
         {
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
-            targetFrameworkComboBox.Items.Clear();
+            targetFrameworkComboBox.Text = "";
         }
     }
     
-    private NormalizedTfmSet NormalizeTfmSet(string tfmValue, string variableTfmToken)
+    private NormalizedTfmSet NormalizeTfmSet(string tfmValue)
     {
         var normalizedSet = new NormalizedTfmSet();
         
-        // Check if it's a variable token
+        // Check if it's a variable token (starts with $)
         if (tfmValue.StartsWith("$"))
         {
             // It's a variable - exact match required
@@ -568,7 +528,19 @@ public partial class MainForm : Form
                           .Where(t => !string.IsNullOrEmpty(t))
                           .ToList();
         
-        // Normalize: order-insensitive, case-insensitive for literals
+        // Check if the list contains any variables
+        bool hasVariables = tfms.Any(t => t.StartsWith("$"));
+        
+        if (hasVariables)
+        {
+            // If any TFM is a variable, treat the entire set as requiring exact match
+            // This handles cases like "net8.0;$(TargetFrameworks)"
+            normalizedSet.IsVariable = true;
+            normalizedSet.Tfms = tfms; // Keep original order and case
+            return normalizedSet;
+        }
+        
+        // All are literals - normalize: order-insensitive, case-insensitive
         var normalizedTfms = tfms.Select(t => t.ToLowerInvariant())
                                  .OrderBy(t => t)
                                  .ToList();
@@ -594,13 +566,17 @@ public partial class MainForm : Form
             if (IsVariable != other.IsVariable)
                 return false;
             
-            // If both are variables, compare exact token match
+            // If both contain variables (IsVariable == true), compare exact lists
             if (IsVariable)
             {
-                return VariableToken == other.VariableToken;
+                // For variables, exact match required (case-sensitive, order-sensitive)
+                if (Tfms.Count != other.Tfms.Count)
+                    return false;
+                
+                return Tfms.SequenceEqual(other.Tfms);
             }
             
-            // If both are literals, compare normalized TFM lists
+            // If both are literals, compare normalized TFM lists (already sorted and lowercased)
             if (Tfms.Count != other.Tfms.Count)
                 return false;
             
@@ -611,15 +587,20 @@ public partial class MainForm : Form
         {
             if (IsVariable)
             {
-                return HashCode.Combine(IsVariable, VariableToken);
+                int hash = IsVariable.GetHashCode();
+                foreach (var tfm in Tfms)
+                {
+                    hash = HashCode.Combine(hash, tfm);
+                }
+                return hash;
             }
             
-            int hash = IsVariable.GetHashCode();
+            int hashCode = IsVariable.GetHashCode();
             foreach (var tfm in Tfms)
             {
-                hash = HashCode.Combine(hash, tfm);
+                hashCode = HashCode.Combine(hashCode, tfm);
             }
-            return hash;
+            return hashCode;
         }
     }
     

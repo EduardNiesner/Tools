@@ -21,27 +21,26 @@ dotnet run --project CsprojChecker
 
 ## Features
 
-### Current (Step 3 - Variable TFM token support and selection enablement)
+### Current (Step 3.1 - Simplified TFM handling without Variable TFM token UI)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
 - Recursive async scanning for .csproj files
 - Real-time DataGridView updates as files are discovered
 - Parse and display project style (SDK vs Old-style)
-- Parse and display target framework(s) with variable token support
+- Parse and display target framework(s) exactly as they appear in csproj (including variables like $(TargetFrameworks))
 - Status label showing scan progress
 - Cancel button to stop scans in progress
 - No UI freezing during large scans
 - **Framework Operations:**
-  - Configurable Variable TFM token TextBox (default: `$(TargetFrameworks)`)
-  - Display inherited TFMs using the configured token
-  - "Change target framework" button (enabled when all selected rows share the same normalized TFM set)
-  - Target framework ComboBox (prefilled with common TFM set when enabled)
-  - TFM normalization: order-insensitive, case-insensitive for literals, exact match for variables
+  - "Change target framework" button (enabled only when all selected rows have identical TFM sets)
+  - Target framework ComboBox (prefilled with exact TFMs from selection, semicolon-separated)
+  - TFM comparison: order-insensitive and case-insensitive for literals (e.g., net9;net8 equals net8;net9), exact match for variables
+  - Empty TFM cells for projects without TargetFramework/TargetFrameworks
 - **Responsive GUI:** Full screen support with proper anchoring for all controls
 - Project style conversions region (placeholder)
 
 ### Planned
-- Framework operations functionality
+- Framework operations functionality (Append TFM for SDK projects)
 - Project style conversion functionality
 
 ## Project Structure
@@ -66,7 +65,8 @@ Uses XML parsing to determine project characteristics:
   - Reads `TargetFramework` (single)
   - Reads `TargetFrameworks` (multiple, semicolon-separated)
   - Reads `TargetFrameworkVersion` (old-style projects)
-  - Preserves variable tokens like `$(TargetFramework)` for inherited values
+  - Preserves variable tokens like `$(TargetFrameworks)` exactly as they appear
+  - Returns empty string if no TFM property exists
 
 ### UI Features
 - **Browse Button**: Opens folder browser dialog with memory of last path
@@ -78,13 +78,13 @@ Uses XML parsing to determine project characteristics:
 - **DataGridView**: Expands to fill available space for viewing long paths
 
 ### Framework Operations
-- **Variable TFM Token TextBox**: Configure the variable token used for inherited TFMs (default: `$(TargetFrameworks)`)
 - **Selection-based Enablement**: The "Change target framework" button and ComboBox are only enabled when:
   - One or more rows are selected
-  - All selected rows have the same normalized TFM set
-- **TFM Normalization Rules**:
+  - All selected rows have identical TFM sets (compared using order-insensitive and case-insensitive logic for literals, exact match for variables)
+- **TFM Comparison Rules**:
   - **Order-insensitive**: `net6.0;net7.0;net8.0` equals `net8.0;net7.0;net6.0`
   - **Case-insensitive for literals**: `NET6.0;NET7.0` equals `net6.0;net7.0`
   - **Exact match for variables**: `$(TargetFrameworks)` only matches `$(TargetFrameworks)` exactly
-  - **Variable vs Literal**: Variable tokens and literal TFMs are never equal
-- **ComboBox Prefill**: When enabled, the ComboBox is automatically populated with the common TFM set from selected rows
+  - **Mixed sets**: Sets containing variables (like `net8.0;$(TargetFrameworks)`) require exact match
+- **ComboBox Prefill**: When enabled, the ComboBox displays the exact TFMs from the selected rows (semicolon-separated), preserving the order and format from the csproj file
+- **Empty TFMs**: Projects without TargetFramework/TargetFrameworks display an empty cell in the grid
