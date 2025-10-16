@@ -157,7 +157,7 @@ public partial class MainForm : Form
         // Append target framework ComboBox
         appendTargetFrameworkComboBox = new ComboBox
         {
-            Location = new Point(220, 95),
+            Location = new Point(220, 99),
             Size = new Size(225, 23),
             Name = "appendTargetFrameworkComboBox",
             DropDownStyle = ComboBoxStyle.DropDown,
