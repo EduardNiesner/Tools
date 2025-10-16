@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using System.Xml;
 
 namespace CsprojChecker;
 
@@ -7,6 +8,7 @@ public partial class MainForm : Form
     private TextBox folderPathTextBox = null!;
     private Button browseButton = null!;
     private Button checkCsprojButton = null!;
+    private Button exportCsvButton = null!;
     private DataGridView projectsGridView = null!;
     private Label statusLabel = null!;
     private Button cancelButton = null!;
@@ -25,6 +27,31 @@ public partial class MainForm : Form
     
     // For cancellation support
     private CancellationTokenSource? _cancellationTokenSource;
+    
+    // Track discovered variables
+    private HashSet<string> _discoveredVariables = new HashSet<string>();
+    
+    // Common TFMs
+    private static readonly string[] CommonTfms = new[]
+    {
+        "net9.0", "net9.0-windows",
+        "net8.0", "net8.0-windows",
+        "net7.0", "net7.0-windows",
+        "net6.0", "net6.0-windows",
+        "net5.0", "net5.0-windows",
+        "netcoreapp3.1",
+        "netstandard2.1", "netstandard2.0",
+        "net48", "net48-windows",
+        "net472", "net472-windows",
+        "net471", "net471-windows",
+        "net47", "net47-windows",
+        "net462", "net462-windows",
+        "net461", "net461-windows",
+        "net46", "net46-windows",
+        "net452", "net452-windows",
+        "net451", "net451-windows",
+        "net45", "net45-windows"
+    };
 
     public MainForm()
     {
@@ -65,12 +92,23 @@ public partial class MainForm : Form
         checkCsprojButton = new Button
         {
             Location = new Point(740, 19),
-            Size = new Size(200, 31),
+            Size = new Size(140, 31),
             Text = "Check for csproj files",
             Name = "checkCsprojButton",
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         checkCsprojButton.Click += CheckCsprojButton_Click;
+        
+        // Export to CSV Button
+        exportCsvButton = new Button
+        {
+            Location = new Point(890, 19),
+            Size = new Size(70, 31),
+            Text = "Export CSV",
+            Name = "exportCsvButton",
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        exportCsvButton.Click += ExportCsvButton_Click;
         
         // DataGridView
         projectsGridView = new DataGridView
@@ -86,6 +124,15 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
         projectsGridView.SelectionChanged += ProjectsGridView_SelectionChanged;
+        
+        // Add context menu for grid
+        var contextMenu = new ContextMenuStrip();
+        contextMenu.Items.Add("Open containing folder", null, OpenContainingFolder_Click);
+        contextMenu.Items.Add("Copy path", null, CopyPath_Click);
+        projectsGridView.ContextMenuStrip = contextMenu;
+        
+        // Add double-click handler
+        projectsGridView.CellDoubleClick += ProjectsGridView_CellDoubleClick;
         
         // Add columns to DataGridView
         projectsGridView.Columns.Add(new DataGridViewTextBoxColumn
@@ -165,6 +212,9 @@ public partial class MainForm : Form
             Enabled = false
         };
         
+        // Initialize ComboBox suggestions
+        InitializeComboBoxSuggestions();
+        
         frameworkOperationsGroupBox.Controls.Add(changeTargetFrameworkButton);
         frameworkOperationsGroupBox.Controls.Add(targetFrameworkComboBox);
         frameworkOperationsGroupBox.Controls.Add(appendTargetFrameworkButton);
@@ -230,6 +280,7 @@ public partial class MainForm : Form
         this.Controls.Add(folderPathTextBox);
         this.Controls.Add(browseButton);
         this.Controls.Add(checkCsprojButton);
+        this.Controls.Add(exportCsvButton);
         this.Controls.Add(projectsGridView);
         this.Controls.Add(frameworkOperationsGroupBox);
         this.Controls.Add(projectStyleGroupBox);
@@ -281,6 +332,7 @@ public partial class MainForm : Form
         
         // Clear existing data
         projectsGridView.Rows.Clear();
+        _discoveredVariables.Clear();
         
         // Setup cancellation token
         _cancellationTokenSource = new CancellationTokenSource();
@@ -288,6 +340,7 @@ public partial class MainForm : Form
         // Update UI state
         checkCsprojButton.Enabled = false;
         browseButton.Enabled = false;
+        exportCsvButton.Enabled = false;
         cancelButton.Enabled = true;
         statusLabel.Text = "Scanning...";
         
@@ -302,6 +355,9 @@ public partial class MainForm : Form
             else
             {
                 statusLabel.Text = $"Scan complete. Found {projectsGridView.Rows.Count} project(s)";
+                
+                // Update ComboBox suggestions with discovered variables
+                UpdateComboBoxSuggestions();
             }
         }
         catch (OperationCanceledException)
@@ -319,6 +375,7 @@ public partial class MainForm : Form
             // Restore UI state
             checkCsprojButton.Enabled = true;
             browseButton.Enabled = true;
+            exportCsvButton.Enabled = true;
             cancelButton.Enabled = false;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
@@ -455,14 +512,18 @@ public partial class MainForm : Form
         var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
         if (targetFrameworksElement != null)
         {
-            return targetFrameworksElement.Value.Trim();
+            var value = targetFrameworksElement.Value.Trim();
+            TrackVariablesInTfm(value);
+            return value;
         }
         
         // Look for TargetFramework (singular)
         var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
         if (targetFrameworkElement != null)
         {
-            return targetFrameworkElement.Value.Trim();
+            var value = targetFrameworkElement.Value.Trim();
+            TrackVariablesInTfm(value);
+            return value;
         }
         
         // Look for TargetFrameworkVersion (old-style projects)
@@ -474,6 +535,22 @@ public partial class MainForm : Form
         
         // If neither exists, return empty string
         return "";
+    }
+    
+    private void TrackVariablesInTfm(string tfmValue)
+    {
+        // Track any variables (tokens starting with $) for ComboBox suggestions
+        if (string.IsNullOrWhiteSpace(tfmValue))
+            return;
+        
+        var parts = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                           .Select(p => p.Trim())
+                           .Where(p => !string.IsNullOrEmpty(p) && p.StartsWith("$"));
+        
+        foreach (var variable in parts)
+        {
+            _discoveredVariables.Add(variable);
+        }
     }
     
     private void ProjectsGridView_SelectionChanged(object? sender, EventArgs e)
@@ -550,6 +627,12 @@ public partial class MainForm : Form
                 
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
             catch (Exception ex)
             {
@@ -634,6 +717,12 @@ public partial class MainForm : Form
                 
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
             catch (Exception ex)
             {
@@ -766,6 +855,12 @@ public partial class MainForm : Form
                 
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
             catch (Exception ex)
             {
@@ -1085,7 +1180,36 @@ public partial class MainForm : Form
     {
         await Task.Run(() =>
         {
-            var doc = XDocument.Load(filePath);
+            // Check if file is read-only
+            if (File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.IsReadOnly)
+                {
+                    throw new InvalidOperationException($"File is read-only: {filePath}");
+                }
+            }
+            
+            // Load document with encoding preservation
+            XDocument doc;
+            System.Text.Encoding? encoding = null;
+            
+            try
+            {
+                // Detect encoding from file
+                using (var reader = new StreamReader(filePath, true))
+                {
+                    reader.Peek(); // Force encoding detection
+                    encoding = reader.CurrentEncoding;
+                }
+                
+                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
+            }
+            
             var root = doc.Root;
             
             if (root == null)
@@ -1105,16 +1229,16 @@ public partial class MainForm : Form
             if (isMultiple)
             {
                 // We need TargetFrameworks (plural)
+                // Remove conflicting TargetFramework (singular) if it exists
+                if (targetFrameworkElement != null)
+                {
+                    targetFrameworkElement.Remove();
+                }
+                
                 if (targetFrameworksElement != null)
                 {
                     // Update existing TargetFrameworks
                     targetFrameworksElement.Value = newTfms;
-                }
-                else if (targetFrameworkElement != null)
-                {
-                    // Convert TargetFramework to TargetFrameworks
-                    targetFrameworkElement.Name = ns + "TargetFrameworks";
-                    targetFrameworkElement.Value = newTfms;
                 }
                 else
                 {
@@ -1130,13 +1254,14 @@ public partial class MainForm : Form
             }
             else
             {
-                // Single framework - use TargetFramework (singular) or keep TargetFrameworks if it already exists
+                // Single framework
+                // Remove conflicting TargetFrameworks (plural) if it exists
                 if (targetFrameworksElement != null)
                 {
-                    // Keep it as TargetFrameworks even for single value
-                    targetFrameworksElement.Value = newTfms;
+                    targetFrameworksElement.Remove();
                 }
-                else if (targetFrameworkElement != null)
+                
+                if (targetFrameworkElement != null)
                 {
                     // Update existing TargetFramework
                     targetFrameworkElement.Value = newTfms;
@@ -1154,7 +1279,26 @@ public partial class MainForm : Form
                 }
             }
             
-            doc.Save(filePath);
+            // Save with original encoding
+            try
+            {
+                var settings = new XmlWriterSettings
+                {
+                    Encoding = encoding ?? System.Text.Encoding.UTF8,
+                    Indent = true,
+                    IndentChars = "  ",
+                    OmitXmlDeclaration = doc.Declaration == null
+                };
+                
+                using (var writer = XmlWriter.Create(filePath, settings))
+                {
+                    doc.Save(writer);
+                }
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
+            }
         });
     }
     
@@ -1205,7 +1349,35 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            var doc = XDocument.Load(filePath);
+            // Check if file is read-only
+            if (File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.IsReadOnly)
+                {
+                    throw new InvalidOperationException($"File is read-only: {filePath}");
+                }
+            }
+            
+            XDocument doc;
+            System.Text.Encoding? encoding = null;
+            
+            try
+            {
+                // Detect encoding from file
+                using (var reader = new StreamReader(filePath, true))
+                {
+                    reader.Peek(); // Force encoding detection
+                    encoding = reader.CurrentEncoding;
+                }
+                
+                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
+            }
+            
             var root = doc.Root;
             
             if (root == null)
@@ -1284,8 +1456,26 @@ public partial class MainForm : Form
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
             
-            // Save the new document
-            newDoc.Save(filePath);
+            // Save the new document with encoding preservation
+            try
+            {
+                var settings = new XmlWriterSettings
+                {
+                    Encoding = encoding ?? System.Text.Encoding.UTF8,
+                    Indent = true,
+                    IndentChars = "  ",
+                    OmitXmlDeclaration = false
+                };
+                
+                using (var writer = XmlWriter.Create(filePath, settings))
+                {
+                    newDoc.Save(writer);
+                }
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
+            }
             
             return newTfm;
         });
@@ -1429,7 +1619,35 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            var doc = XDocument.Load(filePath);
+            // Check if file is read-only
+            if (File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.IsReadOnly)
+                {
+                    throw new InvalidOperationException($"File is read-only: {filePath}");
+                }
+            }
+            
+            XDocument doc;
+            System.Text.Encoding? encoding = null;
+            
+            try
+            {
+                // Detect encoding from file
+                using (var reader = new StreamReader(filePath, true))
+                {
+                    reader.Peek(); // Force encoding detection
+                    encoding = reader.CurrentEncoding;
+                }
+                
+                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
+            }
+            
             var root = doc.Root;
             
             if (root == null)
@@ -1572,8 +1790,26 @@ public partial class MainForm : Form
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
             
-            // Save the new document
-            newDoc.Save(filePath);
+            // Save the new document with encoding preservation
+            try
+            {
+                var settings = new XmlWriterSettings
+                {
+                    Encoding = encoding ?? System.Text.Encoding.UTF8,
+                    Indent = true,
+                    IndentChars = "  ",
+                    OmitXmlDeclaration = false
+                };
+                
+                using (var writer = XmlWriter.Create(filePath, settings))
+                {
+                    newDoc.Save(writer);
+                }
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
+            }
             
             return newTfm;
         });
@@ -1632,6 +1868,193 @@ public partial class MainForm : Form
         
         // If it doesn't start with 'net', return as-is
         return trimmed;
+    }
+    
+    private void InitializeComboBoxSuggestions()
+    {
+        // Populate both ComboBoxes with common TFMs
+        targetFrameworkComboBox.Items.Clear();
+        appendTargetFrameworkComboBox.Items.Clear();
+        
+        foreach (var tfm in CommonTfms)
+        {
+            targetFrameworkComboBox.Items.Add(tfm);
+            appendTargetFrameworkComboBox.Items.Add(tfm);
+        }
+    }
+    
+    private void UpdateComboBoxSuggestions()
+    {
+        // Add discovered variables to ComboBoxes
+        var currentTargetItems = targetFrameworkComboBox.Items.Cast<string>().ToHashSet();
+        var currentAppendItems = appendTargetFrameworkComboBox.Items.Cast<string>().ToHashSet();
+        
+        foreach (var variable in _discoveredVariables)
+        {
+            if (!currentTargetItems.Contains(variable))
+            {
+                targetFrameworkComboBox.Items.Add(variable);
+            }
+            if (!currentAppendItems.Contains(variable))
+            {
+                appendTargetFrameworkComboBox.Items.Add(variable);
+            }
+        }
+    }
+    
+    private void OpenContainingFolder_Click(object? sender, EventArgs e)
+    {
+        if (projectsGridView.SelectedRows.Count == 0)
+            return;
+        
+        var row = projectsGridView.SelectedRows[0];
+        var filePath = row.Cells["FullPath"].Value?.ToString();
+        
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            MessageBox.Show("File not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        
+        try
+        {
+            var folder = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                System.Diagnostics.Process.Start("explorer.exe", folder);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to open folder: {ex.Message}", "Error", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    
+    private void CopyPath_Click(object? sender, EventArgs e)
+    {
+        if (projectsGridView.SelectedRows.Count == 0)
+            return;
+        
+        var paths = new List<string>();
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString();
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                paths.Add(filePath);
+            }
+        }
+        
+        if (paths.Count > 0)
+        {
+            try
+            {
+                Clipboard.SetText(string.Join(Environment.NewLine, paths));
+                statusLabel.Text = $"Copied {paths.Count} path(s) to clipboard";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+    
+    private void ProjectsGridView_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0)
+            return;
+        
+        var row = projectsGridView.Rows[e.RowIndex];
+        var filePath = row.Cells["FullPath"].Value?.ToString();
+        
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            MessageBox.Show("File not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = filePath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to open file: {ex.Message}", "Error", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    
+    private void ExportCsvButton_Click(object? sender, EventArgs e)
+    {
+        if (projectsGridView.Rows.Count == 0)
+        {
+            MessageBox.Show("No data to export.", "Export CSV", 
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        
+        using var saveFileDialog = new SaveFileDialog
+        {
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            DefaultExt = "csv",
+            FileName = $"csproj_report_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
+        };
+        
+        if (saveFileDialog.ShowDialog() == DialogResult.OK)
+        {
+            try
+            {
+                ExportToCsv(saveFileDialog.FileName);
+                statusLabel.Text = $"Exported {projectsGridView.Rows.Count} row(s) to {Path.GetFileName(saveFileDialog.FileName)}";
+                MessageBox.Show($"Data exported successfully to:\n{saveFileDialog.FileName}", 
+                    "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to export CSV: {ex.Message}", "Export Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+    
+    private void ExportToCsv(string filePath)
+    {
+        using var writer = new StreamWriter(filePath, false, System.Text.Encoding.UTF8);
+        
+        // Write header
+        var headers = new List<string>();
+        foreach (DataGridViewColumn column in projectsGridView.Columns)
+        {
+            headers.Add(EscapeCsvField(column.HeaderText));
+        }
+        writer.WriteLine(string.Join(",", headers));
+        
+        // Write data
+        foreach (DataGridViewRow row in projectsGridView.Rows)
+        {
+            var values = new List<string>();
+            foreach (DataGridViewCell cell in row.Cells)
+            {
+                values.Add(EscapeCsvField(cell.Value?.ToString() ?? ""));
+            }
+            writer.WriteLine(string.Join(",", values));
+        }
+    }
+    
+    private string EscapeCsvField(string field)
+    {
+        // Escape double quotes and wrap in quotes if needed
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
+        {
+            return $"\"{field.Replace("\"", "\"\"")}\"";
+        }
+        return field;
     }
     
     private class NormalizedTfmSet
