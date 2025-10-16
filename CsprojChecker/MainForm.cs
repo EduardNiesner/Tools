@@ -14,23 +14,23 @@ public partial class MainForm : Form
     private Button cancelButton = null!;
     private GroupBox frameworkOperationsGroupBox = null!;
     private GroupBox projectStyleGroupBox = null!;
-    
+
     // Framework operations controls
     private Button changeTargetFrameworkButton = null!;
     private ComboBox targetFrameworkComboBox = null!;
     private Button appendTargetFrameworkButton = null!;
     private ComboBox appendTargetFrameworkComboBox = null!;
-    
+
     // Project style conversion controls
     private Button convertToSdkButton = null!;
     private Button convertToOldStyleButton = null!;
-    
+
     // For cancellation support
     private CancellationTokenSource? _cancellationTokenSource;
-    
+
     // Track discovered variables
     private HashSet<string> _discoveredVariables = new HashSet<string>();
-    
+
     // Common TFMs
     private static readonly string[] CommonTfms = new[]
     {
@@ -61,13 +61,13 @@ public partial class MainForm : Form
     private void InitializeComponent()
     {
         this.SuspendLayout();
-        
+
         // Form settings
         this.Text = "Csproj Checker";
         this.Size = new Size(1000, 700);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.MinimumSize = new Size(800, 600);
-        
+
         // Folder path TextBox
         folderPathTextBox = new TextBox
         {
@@ -76,7 +76,7 @@ public partial class MainForm : Form
             Name = "folderPathTextBox",
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
-        
+
         // Browse Button (height increased by 25%)
         browseButton = new Button
         {
@@ -87,7 +87,7 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         browseButton.Click += BrowseButton_Click;
-        
+
         // Check for csproj files Button (height increased by 25%)
         checkCsprojButton = new Button
         {
@@ -98,7 +98,7 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         checkCsprojButton.Click += CheckCsprojButton_Click;
-        
+
         // Export to CSV Button
         exportCsvButton = new Button
         {
@@ -109,7 +109,7 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         exportCsvButton.Click += ExportCsvButton_Click;
-        
+
         // DataGridView
         projectsGridView = new DataGridView
         {
@@ -124,16 +124,16 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
         projectsGridView.SelectionChanged += ProjectsGridView_SelectionChanged;
-        
+
         // Add context menu for grid
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add("Open containing folder", null, OpenContainingFolder_Click);
         contextMenu.Items.Add("Copy path", null, CopyPath_Click);
         projectsGridView.ContextMenuStrip = contextMenu;
-        
+
         // Add double-click handler
         projectsGridView.CellDoubleClick += ProjectsGridView_CellDoubleClick;
-        
+
         // Add columns to DataGridView
         projectsGridView.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -159,7 +159,7 @@ public partial class MainForm : Form
             HeaderText = "Changed",
             FillWeight = 20
         });
-        
+
         // Framework operations GroupBox
         frameworkOperationsGroupBox = new GroupBox
         {
@@ -169,7 +169,7 @@ public partial class MainForm : Form
             Name = "frameworkOperationsGroupBox",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         };
-        
+
         // Change target framework button
         changeTargetFrameworkButton = new Button
         {
@@ -180,7 +180,7 @@ public partial class MainForm : Form
             Enabled = false
         };
         changeTargetFrameworkButton.Click += ChangeTargetFrameworkButton_Click;
-        
+
         // Target framework ComboBox
         targetFrameworkComboBox = new ComboBox
         {
@@ -190,7 +190,7 @@ public partial class MainForm : Form
             DropDownStyle = ComboBoxStyle.DropDown,
             Enabled = false
         };
-        
+
         // Append target framework button
         appendTargetFrameworkButton = new Button
         {
@@ -201,7 +201,7 @@ public partial class MainForm : Form
             Enabled = false
         };
         appendTargetFrameworkButton.Click += AppendTargetFrameworkButton_Click;
-        
+
         // Append target framework ComboBox
         appendTargetFrameworkComboBox = new ComboBox
         {
@@ -211,15 +211,15 @@ public partial class MainForm : Form
             DropDownStyle = ComboBoxStyle.DropDown,
             Enabled = false
         };
-        
+
         // Initialize ComboBox suggestions
         InitializeComboBoxSuggestions();
-        
+
         frameworkOperationsGroupBox.Controls.Add(changeTargetFrameworkButton);
         frameworkOperationsGroupBox.Controls.Add(targetFrameworkComboBox);
         frameworkOperationsGroupBox.Controls.Add(appendTargetFrameworkButton);
         frameworkOperationsGroupBox.Controls.Add(appendTargetFrameworkComboBox);
-        
+
         // Project style conversions GroupBox
         projectStyleGroupBox = new GroupBox
         {
@@ -229,7 +229,7 @@ public partial class MainForm : Form
             Name = "projectStyleGroupBox",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
-        
+
         // Convert to SDK-style button
         convertToSdkButton = new Button
         {
@@ -241,7 +241,7 @@ public partial class MainForm : Form
         };
         convertToSdkButton.Click += ConvertToSdkButton_Click;
         projectStyleGroupBox.Controls.Add(convertToSdkButton);
-        
+
         // Convert to Old-style button
         convertToOldStyleButton = new Button
         {
@@ -253,7 +253,7 @@ public partial class MainForm : Form
         };
         convertToOldStyleButton.Click += ConvertToOldStyleButton_Click;
         projectStyleGroupBox.Controls.Add(convertToOldStyleButton);
-        
+
         // Status Label
         statusLabel = new Label
         {
@@ -263,7 +263,7 @@ public partial class MainForm : Form
             Name = "statusLabel",
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
-        
+
         // Cancel Button (height increased by 25%)
         cancelButton = new Button
         {
@@ -275,7 +275,7 @@ public partial class MainForm : Form
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
         cancelButton.Click += CancelButton_Click;
-        
+
         // Add controls to form
         this.Controls.Add(folderPathTextBox);
         this.Controls.Add(browseButton);
@@ -286,12 +286,12 @@ public partial class MainForm : Form
         this.Controls.Add(projectStyleGroupBox);
         this.Controls.Add(statusLabel);
         this.Controls.Add(cancelButton);
-        
+
         this.ResumeLayout(false);
     }
-    
+
     // Event handlers - placeholders with no business logic yet
-    
+
     private void BrowseButton_Click(object? sender, EventArgs e)
     {
         using var folderBrowserDialog = new FolderBrowserDialog
@@ -300,54 +300,54 @@ public partial class MainForm : Form
             UseDescriptionForTitle = true,
             ShowNewFolderButton = false
         };
-        
+
         if (!string.IsNullOrWhiteSpace(folderPathTextBox.Text) && Directory.Exists(folderPathTextBox.Text))
         {
             folderBrowserDialog.SelectedPath = folderPathTextBox.Text;
         }
-        
+
         if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
         {
             folderPathTextBox.Text = folderBrowserDialog.SelectedPath;
         }
     }
-    
+
     private async void CheckCsprojButton_Click(object? sender, EventArgs e)
     {
         var folderPath = folderPathTextBox.Text;
-        
+
         if (string.IsNullOrWhiteSpace(folderPath))
         {
-            MessageBox.Show("Please select a folder to scan.", "No Folder Selected", 
+            MessageBox.Show("Please select a folder to scan.", "No Folder Selected",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        
+
         if (!Directory.Exists(folderPath))
         {
-            MessageBox.Show("The selected folder does not exist.", "Invalid Folder", 
+            MessageBox.Show("The selected folder does not exist.", "Invalid Folder",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
-        
+
         // Clear existing data
         projectsGridView.Rows.Clear();
         _discoveredVariables.Clear();
-        
+
         // Setup cancellation token
         _cancellationTokenSource = new CancellationTokenSource();
-        
+
         // Update UI state
         checkCsprojButton.Enabled = false;
         browseButton.Enabled = false;
         exportCsvButton.Enabled = false;
         cancelButton.Enabled = true;
         statusLabel.Text = "Scanning...";
-        
+
         try
         {
             await ScanForCsprojFilesAsync(folderPath, _cancellationTokenSource.Token);
-            
+
             if (_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 statusLabel.Text = "Scan cancelled";
@@ -355,7 +355,7 @@ public partial class MainForm : Form
             else
             {
                 statusLabel.Text = $"Scan complete. Found {projectsGridView.Rows.Count} project(s)";
-                
+
                 // Update ComboBox suggestions with discovered variables
                 UpdateComboBoxSuggestions();
             }
@@ -367,7 +367,7 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             statusLabel.Text = "Error during scan";
-            MessageBox.Show($"An error occurred during scanning: {ex.Message}", "Scan Error", 
+            MessageBox.Show($"An error occurred during scanning: {ex.Message}", "Scan Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -381,34 +381,34 @@ public partial class MainForm : Form
             _cancellationTokenSource = null;
         }
     }
-    
+
     private void CancelButton_Click(object? sender, EventArgs e)
     {
         _cancellationTokenSource?.Cancel();
         cancelButton.Enabled = false;
         statusLabel.Text = "Cancelling...";
     }
-    
+
     private async Task ScanForCsprojFilesAsync(string folderPath, CancellationToken cancellationToken)
     {
         await ScanDirectoryAsync(folderPath, cancellationToken);
     }
-    
+
     private async Task ScanDirectoryAsync(string directoryPath, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        
+
         // Search for .csproj files in current directory
         try
         {
             var csprojFiles = Directory.GetFiles(directoryPath, "*.csproj", SearchOption.TopDirectoryOnly);
-            
+
             foreach (var csprojFile in csprojFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                
+
                 var projectInfo = await ParseCsprojFileAsync(csprojFile, cancellationToken);
-                
+
                 // Update UI on UI thread
                 this.Invoke(() =>
                 {
@@ -418,10 +418,10 @@ public partial class MainForm : Form
                         projectInfo.TargetFrameworks,
                         projectInfo.Changed
                     );
-                    
+
                     statusLabel.Text = $"Scanning... Found {projectsGridView.Rows.Count} project(s)";
                 });
-                
+
                 // Small delay to allow UI to update smoothly
                 await Task.Delay(10, cancellationToken);
             }
@@ -434,12 +434,12 @@ public partial class MainForm : Form
         {
             throw;
         }
-        
+
         // Recursively scan subdirectories
         try
         {
             var subdirectories = Directory.GetDirectories(directoryPath);
-            
+
             foreach (var subdirectory in subdirectories)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -455,7 +455,7 @@ public partial class MainForm : Form
             throw;
         }
     }
-    
+
     private async Task<ProjectInfo> ParseCsprojFileAsync(string filePath, CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
@@ -464,7 +464,7 @@ public partial class MainForm : Form
             {
                 var doc = XDocument.Load(filePath);
                 var root = doc.Root;
-                
+
                 if (root == null)
                 {
                     return new ProjectInfo
@@ -475,14 +475,14 @@ public partial class MainForm : Form
                         Changed = ""
                     };
                 }
-                
+
                 // Determine if SDK-style or Old-style
                 bool isSdkStyle = root.Attribute("Sdk") != null;
                 string style = isSdkStyle ? "SDK" : "Old-style";
-                
+
                 // Parse target frameworks
                 string targetFrameworks = ParseTargetFrameworks(root);
-                
+
                 return new ProjectInfo
                 {
                     FullPath = filePath,
@@ -503,11 +503,11 @@ public partial class MainForm : Form
             }
         }, cancellationToken);
     }
-    
+
     private string ParseTargetFrameworks(XElement root)
     {
         XNamespace ns = root.GetDefaultNamespace();
-        
+
         // Look for TargetFrameworks (plural) first
         var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
         if (targetFrameworksElement != null)
@@ -516,7 +516,7 @@ public partial class MainForm : Form
             TrackVariablesInTfm(value);
             return value;
         }
-        
+
         // Look for TargetFramework (singular)
         var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
         if (targetFrameworkElement != null)
@@ -525,93 +525,93 @@ public partial class MainForm : Form
             TrackVariablesInTfm(value);
             return value;
         }
-        
+
         // Look for TargetFrameworkVersion (old-style projects)
         var targetFrameworkVersionElement = root.Descendants(ns + "TargetFrameworkVersion").FirstOrDefault();
         if (targetFrameworkVersionElement != null)
         {
             return targetFrameworkVersionElement.Value.Trim();
         }
-        
+
         // If neither exists, return empty string
         return "";
     }
-    
+
     private void TrackVariablesInTfm(string tfmValue)
     {
         // Track any variables (tokens starting with $) for ComboBox suggestions
         if (string.IsNullOrWhiteSpace(tfmValue))
             return;
-        
+
         var parts = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
                            .Select(p => p.Trim())
                            .Where(p => !string.IsNullOrEmpty(p) && p.StartsWith("$"));
-        
+
         foreach (var variable in parts)
         {
             _discoveredVariables.Add(variable);
         }
     }
-    
+
     private void ProjectsGridView_SelectionChanged(object? sender, EventArgs e)
     {
         UpdateFrameworkOperationsState();
     }
-    
+
     private async void ChangeTargetFrameworkButton_Click(object? sender, EventArgs e)
     {
         var newValue = targetFrameworkComboBox.Text.Trim();
-        
+
         if (string.IsNullOrWhiteSpace(newValue))
         {
             MessageBox.Show("Please enter a target framework.", "No Framework Specified",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        
+
         // Get selected projects
         var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
-        
+
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
             var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
-            
+
             selectedProjects.Add((row.Index, filePath, currentTfms));
         }
-        
+
         if (selectedProjects.Count == 0)
         {
             return;
         }
-        
+
         // Show confirmation dialog
         var confirmMessage = $"Are you sure you want to change the target framework to '{newValue}' for {selectedProjects.Count} project(s)?";
         var confirmResult = MessageBox.Show(confirmMessage, "Confirm Change",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        
+
         if (confirmResult != DialogResult.Yes)
         {
             return;
         }
-        
+
         // Apply changes
         int successCount = 0;
         int errorCount = 0;
         var results = new List<string>();
-        
+
         foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
         {
             try
             {
                 // Write to file
                 await WriteTfmToFileAsync(filePath, newValue);
-                
+
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newValue;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
-                
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newValue}");
             }
@@ -628,85 +628,85 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
         }
-        
+
         // Show results
         var resultMessage = $"Change completed:\n\n" +
                           $"Successful: {successCount}\n" +
                           $"Errors: {errorCount}\n\n" +
                           string.Join("\n", results.Take(10));
-        
+
         if (results.Count > 10)
         {
             resultMessage += $"\n\n... and {results.Count - 10} more";
         }
-        
+
         MessageBox.Show(resultMessage, "Change Results",
             MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-        
+
         // Refresh selection state
         UpdateFrameworkOperationsState();
     }
-    
+
     private async void AppendTargetFrameworkButton_Click(object? sender, EventArgs e)
     {
         var appendValue = appendTargetFrameworkComboBox.Text.Trim();
-        
+
         if (string.IsNullOrWhiteSpace(appendValue))
         {
             MessageBox.Show("Please enter a target framework to append.", "No Framework Specified",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        
+
         // Get selected SDK-style projects
         var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
-        
+
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
             var style = row.Cells["Style"].Value?.ToString() ?? "";
             var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
-            
+
             if (style == "SDK")
             {
                 selectedProjects.Add((row.Index, filePath, currentTfms));
             }
         }
-        
+
         if (selectedProjects.Count == 0)
         {
             return;
         }
-        
+
         // Show confirmation dialog
         var confirmMessage = $"Are you sure you want to append '{appendValue}' to {selectedProjects.Count} project(s)?";
         var confirmResult = MessageBox.Show(confirmMessage, "Confirm Append",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        
+
         if (confirmResult != DialogResult.Yes)
         {
             return;
         }
-        
+
         // Apply changes
         int successCount = 0;
         int errorCount = 0;
         var results = new List<string>();
-        
+
         foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
         {
             try
             {
                 var newTfms = AppendTfmValue(currentTfms, appendValue);
-                
+
                 // Write to file
                 await WriteTfmToFileAsync(filePath, newTfms);
-                
+
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
-                
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
             }
@@ -723,47 +723,47 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
         }
-        
+
         // Show results
         var resultMessage = $"Append completed:\n\n" +
                           $"Successful: {successCount}\n" +
                           $"Errors: {errorCount}\n\n" +
                           string.Join("\n", results.Take(10));
-        
+
         if (results.Count > 10)
         {
             resultMessage += $"\n\n... and {results.Count - 10} more";
         }
-        
+
         MessageBox.Show(resultMessage, "Append Results",
             MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-        
+
         // Refresh selection state
         UpdateFrameworkOperationsState();
     }
-    
+
     private async void ConvertToSdkButton_Click(object? sender, EventArgs e)
     {
         // Get selected Old-style projects
         var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
-        
+
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
             var style = row.Cells["Style"].Value?.ToString() ?? "";
             var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
-            
+
             if (style == "Old-style")
             {
                 selectedProjects.Add((row.Index, filePath, currentTfms));
             }
         }
-        
+
         if (selectedProjects.Count == 0)
         {
             return;
         }
-        
+
         // Show confirmation dialog
         var confirmMessage = $"Are you sure you want to convert {selectedProjects.Count} Old-style project(s) to SDK-style?\n\n" +
                            "This will:\n" +
@@ -773,30 +773,30 @@ public partial class MainForm : Form
                            "- Remove most legacy project elements";
         var confirmResult = MessageBox.Show(confirmMessage, "Confirm Conversion",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        
+
         if (confirmResult != DialogResult.Yes)
         {
             return;
         }
-        
+
         // Apply changes
         int successCount = 0;
         int errorCount = 0;
         var results = new List<string>();
-        
+
         foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
         {
             try
             {
                 // Convert the project file
                 var newTfms = await ConvertOldStyleToSdkAsync(filePath, currentTfms);
-                
+
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["Style"].Value = "SDK";
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
-                
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
             }
@@ -813,51 +813,51 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
         }
-        
+
         // Show results
         var resultMessage = $"Conversion completed:\n\n" +
                           $"Successful: {successCount}\n" +
                           $"Errors: {errorCount}\n\n" +
                           string.Join("\n", results.Take(10));
-        
+
         if (results.Count > 10)
         {
             resultMessage += $"\n\n... and {results.Count - 10} more";
         }
-        
+
         MessageBox.Show(resultMessage, "Conversion Results",
             MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-        
+
         // Refresh selection state
         UpdateFrameworkOperationsState();
     }
-    
+
     private async void ConvertToOldStyleButton_Click(object? sender, EventArgs e)
     {
         // Get selected SDK-style projects
         var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms, string currentStyle)>();
-        
+
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
             var style = row.Cells["Style"].Value?.ToString() ?? "";
             var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
-            
+
             if (style == "SDK")
             {
                 selectedProjects.Add((row.Index, filePath, currentTfms, style));
             }
         }
-        
+
         if (selectedProjects.Count == 0)
         {
             return;
         }
-        
+
         // Validate constraints and identify projects that can be converted
         var validProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
         var skippedProjects = new List<(string fileName, string reason)>();
-        
+
         foreach (var (rowIndex, filePath, currentTfms, currentStyle) in selectedProjects)
         {
             // Check if already Old-style (shouldn't happen due to button enablement, but check anyway)
@@ -866,10 +866,10 @@ public partial class MainForm : Form
                 skippedProjects.Add((Path.GetFileName(filePath), "Already Old-style"));
                 continue;
             }
-            
+
             // Check constraints
             var validationResult = ValidateSdkToOldStyleConstraints(filePath, currentTfms);
-            
+
             if (validationResult.IsValid)
             {
                 validProjects.Add((rowIndex, filePath, currentTfms));
@@ -879,23 +879,23 @@ public partial class MainForm : Form
                 skippedProjects.Add((Path.GetFileName(filePath), validationResult.Reason));
             }
         }
-        
+
         if (validProjects.Count == 0)
         {
             // All projects were skipped
             var skipMessage = "No projects can be converted. Reasons:\n\n" +
                             string.Join("\n", skippedProjects.Take(10).Select(p => $"✗ {p.fileName}: {p.reason}"));
-            
+
             if (skippedProjects.Count > 10)
             {
                 skipMessage += $"\n\n... and {skippedProjects.Count - 10} more";
             }
-            
+
             MessageBox.Show(skipMessage, "Conversion Blocked",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        
+
         // Show confirmation dialog
         var confirmMessage = $"Are you sure you want to convert {validProjects.Count} SDK-style project(s) to Old-style?\n\n" +
                            "This will:\n" +
@@ -903,38 +903,38 @@ public partial class MainForm : Form
                            "- Map SDK-style framework versions (net4x) to old-style (v4.x)\n" +
                            "- Preserve variable tokens verbatim\n" +
                            "- Restore legacy project structure";
-        
+
         if (skippedProjects.Count > 0)
         {
             confirmMessage += $"\n\nNote: {skippedProjects.Count} project(s) will be skipped due to constraint violations.";
         }
-        
+
         var confirmResult = MessageBox.Show(confirmMessage, "Confirm Conversion",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        
+
         if (confirmResult != DialogResult.Yes)
         {
             return;
         }
-        
+
         // Apply changes
         int successCount = 0;
         int errorCount = 0;
         var results = new List<string>();
-        
+
         foreach (var (rowIndex, filePath, currentTfms) in validProjects)
         {
             try
             {
                 // Convert the project file
                 var newTfms = await ConvertSdkToOldStyleAsync(filePath, currentTfms);
-                
+
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["Style"].Value = "Old-style";
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
-                
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
             }
@@ -951,32 +951,32 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
             }
         }
-        
+
         // Add skipped projects to results
         foreach (var (fileName, reason) in skippedProjects)
         {
             results.Add($"⊘ {fileName}: Skipped - {reason}");
         }
-        
+
         // Show results
         var resultMessage = $"Conversion completed:\n\n" +
                           $"Successful: {successCount}\n" +
                           $"Errors: {errorCount}\n" +
                           $"Skipped: {skippedProjects.Count}\n\n" +
                           string.Join("\n", results.Take(10));
-        
+
         if (results.Count > 10)
         {
             resultMessage += $"\n\n... and {results.Count - 10} more";
         }
-        
+
         MessageBox.Show(resultMessage, "Conversion Results",
             MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-        
+
         // Refresh selection state
         UpdateFrameworkOperationsState();
     }
-    
+
     private void UpdateFrameworkOperationsState()
     {
         if (projectsGridView.SelectedRows.Count == 0)
@@ -990,19 +990,19 @@ public partial class MainForm : Form
             convertToOldStyleButton.Enabled = false;
             return;
         }
-        
+
         // Collect TFM values from all selected rows
         List<string> tfmValues = new List<string>();
         bool allSdkStyle = true;
         bool allOldStyle = true;
-        
+
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
             if (row.Cells["TargetFrameworks"].Value is string tfmValue)
             {
                 tfmValues.Add(tfmValue);
             }
-            
+
             if (row.Cells["Style"].Value is string styleValue)
             {
                 if (styleValue != "SDK")
@@ -1015,7 +1015,7 @@ public partial class MainForm : Form
                 }
             }
         }
-        
+
         if (tfmValues.Count == 0)
         {
             changeTargetFrameworkButton.Enabled = false;
@@ -1027,11 +1027,11 @@ public partial class MainForm : Form
             convertToOldStyleButton.Enabled = false;
             return;
         }
-        
+
         // Check if all TFM sets are identical (order-insensitive, case-insensitive for literals, exact for variables)
         bool allSetsEqual = true;
         var firstNormalized = NormalizeTfmSet(tfmValues[0]);
-        
+
         for (int i = 1; i < tfmValues.Count; i++)
         {
             var currentNormalized = NormalizeTfmSet(tfmValues[i]);
@@ -1041,12 +1041,12 @@ public partial class MainForm : Form
                 break;
             }
         }
-        
+
         if (allSetsEqual)
         {
             changeTargetFrameworkButton.Enabled = true;
             targetFrameworkComboBox.Enabled = true;
-            
+
             // Prefill the ComboBox with the exact joined TFMs from the first selection
             // (since all are identical, we can use the first one)
             targetFrameworkComboBox.Text = tfmValues[0];
@@ -1057,7 +1057,7 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Enabled = false;
             targetFrameworkComboBox.Text = "";
         }
-        
+
         // Enable Append button only if all selected rows are SDK-style
         if (allSdkStyle)
         {
@@ -1069,7 +1069,7 @@ public partial class MainForm : Form
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
         }
-        
+
         // Enable Convert to SDK button only if all selected rows are Old-style
         if (allOldStyle)
         {
@@ -1079,7 +1079,7 @@ public partial class MainForm : Form
         {
             convertToSdkButton.Enabled = false;
         }
-        
+
         // Enable Convert to Old-style button only if all selected rows are SDK-style
         if (allSdkStyle)
         {
@@ -1090,23 +1090,23 @@ public partial class MainForm : Form
             convertToOldStyleButton.Enabled = false;
         }
     }
-    
+
     private string AppendTfmValue(string currentTfms, string appendValue)
     {
         // Parse the append value to extract individual TFMs
         var appendTokens = ParseTfmTokens(appendValue);
-        
+
         // Parse existing TFMs to extract individual tokens
         var existingTokens = ParseTfmTokens(currentTfms);
-        
+
         // Combine and deduplicate
         var allTokens = new List<TfmToken>();
         allTokens.AddRange(existingTokens);
-        
+
         foreach (var appendToken in appendTokens)
         {
             bool isDuplicate = false;
-            
+
             foreach (var existingToken in allTokens)
             {
                 if (AreTfmTokensEqual(appendToken, existingToken))
@@ -1115,39 +1115,39 @@ public partial class MainForm : Form
                     break;
                 }
             }
-            
+
             if (!isDuplicate)
             {
                 allTokens.Add(appendToken);
             }
         }
-        
+
         // Sort tokens: variables first (in original order), then literals (sorted)
         var variables = allTokens.Where(t => t.IsVariable).ToList();
         var literals = allTokens.Where(t => !t.IsVariable)
                                 .OrderBy(t => GetSortOrder(t.Value))
                                 .ThenBy(t => t.Value.ToLowerInvariant())
                                 .ToList();
-        
+
         var sortedTokens = variables.Concat(literals).ToList();
-        
+
         // Join tokens back into a semicolon-separated string
         return string.Join(";", sortedTokens.Select(t => t.Value));
     }
-    
+
     private List<TfmToken> ParseTfmTokens(string tfmValue)
     {
         var tokens = new List<TfmToken>();
-        
+
         if (string.IsNullOrWhiteSpace(tfmValue))
         {
             return tokens;
         }
-        
+
         var parts = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
                            .Select(p => p.Trim())
                            .Where(p => !string.IsNullOrEmpty(p));
-        
+
         foreach (var part in parts)
         {
             var token = new TfmToken
@@ -1155,53 +1155,53 @@ public partial class MainForm : Form
                 Value = part,
                 IsVariable = part.StartsWith("$")
             };
-            
+
             // Apply WinForms autocorrection for literal nets
             if (!token.IsVariable && IsNetFrameworkToken(part))
             {
                 token.Value = ApplyWinFormsAutocorrection(part);
             }
-            
+
             tokens.Add(token);
         }
-        
+
         return tokens;
     }
-    
+
     private bool IsNetFrameworkToken(string value)
     {
         var lower = value.ToLowerInvariant();
         // Check if it looks like a .NET Framework version (net followed by digits and optional decimals)
-        return lower.StartsWith("net") && 
-               lower.Length > 3 && 
+        return lower.StartsWith("net") &&
+               lower.Length > 3 &&
                char.IsDigit(lower[3]) &&
                !lower.Contains("-"); // Exclude net6.0-windows style
     }
-    
+
     private string ApplyWinFormsAutocorrection(string tfm)
     {
         var lower = tfm.ToLowerInvariant();
-        
+
         // Common .NET Framework versions that should have -windows suffix for WinForms
         // We'll add -windows if it's a modern .NET version (net5.0+) without existing platform suffix
         if (lower.StartsWith("net") && !lower.Contains("-"))
         {
             // Extract version number
             var versionPart = lower.Substring(3);
-            
+
             // Check if it's a modern .NET version (5.0 or higher)
-            if (versionPart.StartsWith("5") || versionPart.StartsWith("6") || 
-                versionPart.StartsWith("7") || versionPart.StartsWith("8") || 
+            if (versionPart.StartsWith("5") || versionPart.StartsWith("6") ||
+                versionPart.StartsWith("7") || versionPart.StartsWith("8") ||
                 versionPart.StartsWith("9"))
             {
                 // Add -windows suffix for WinForms projects
                 return tfm + "-windows";
             }
         }
-        
+
         return tfm;
     }
-    
+
     private bool AreTfmTokensEqual(TfmToken token1, TfmToken token2)
     {
         // Variables require exact match (case-sensitive)
@@ -1209,27 +1209,27 @@ public partial class MainForm : Form
         {
             return token1.Value == token2.Value;
         }
-        
+
         // If one is variable and other is not, they're not equal
         if (token1.IsVariable != token2.IsVariable)
         {
             return false;
         }
-        
+
         // Literals are case-insensitive
         return string.Equals(token1.Value, token2.Value, StringComparison.OrdinalIgnoreCase);
     }
-    
+
     private int GetSortOrder(string tfm)
     {
         var lower = tfm.ToLowerInvariant();
-        
+
         // Extract version number for sorting
         // Priority: newer versions first
         if (lower.StartsWith("net"))
         {
             var versionPart = lower.Substring(3);
-            
+
             // Try to parse version number
             if (versionPart.Length > 0 && char.IsDigit(versionPart[0]))
             {
@@ -1246,7 +1246,7 @@ public partial class MainForm : Form
                         break;
                     }
                 }
-                
+
                 if (double.TryParse(numericPart, out var version))
                 {
                     // Return negative to sort descending (newer first)
@@ -1254,10 +1254,10 @@ public partial class MainForm : Form
                 }
             }
         }
-        
+
         return 0;
     }
-    
+
     private async Task WriteTfmToFileAsync(string filePath, string newTfms)
     {
         await Task.Run(() =>
@@ -1271,11 +1271,11 @@ public partial class MainForm : Form
                     throw new InvalidOperationException($"File is read-only: {filePath}");
                 }
             }
-            
+
             // Load document with encoding preservation
             XDocument doc;
             System.Text.Encoding? encoding = null;
-            
+
             try
             {
                 // Detect encoding from file
@@ -1284,30 +1284,30 @@ public partial class MainForm : Form
                     reader.Peek(); // Force encoding detection
                     encoding = reader.CurrentEncoding;
                 }
-                
+
                 doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
             }
             catch (IOException ex)
             {
                 throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
             }
-            
+
             var root = doc.Root;
-            
+
             if (root == null)
             {
                 throw new InvalidOperationException("Invalid project file");
             }
-            
+
             XNamespace ns = root.GetDefaultNamespace();
-            
+
             // Look for existing TargetFramework or TargetFrameworks element
             var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
             var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
-            
+
             // Determine if we need singular or plural based on the new value
             bool isMultiple = newTfms.Contains(';');
-            
+
             if (isMultiple)
             {
                 // We need TargetFrameworks (plural)
@@ -1316,7 +1316,7 @@ public partial class MainForm : Form
                 {
                     targetFrameworkElement.Remove();
                 }
-                
+
                 if (targetFrameworksElement != null)
                 {
                     // Update existing TargetFrameworks
@@ -1342,7 +1342,7 @@ public partial class MainForm : Form
                 {
                     targetFrameworksElement.Remove();
                 }
-                
+
                 if (targetFrameworkElement != null)
                 {
                     // Update existing TargetFramework
@@ -1360,7 +1360,7 @@ public partial class MainForm : Form
                     propertyGroup.Add(new XElement(ns + "TargetFramework", newTfms));
                 }
             }
-            
+
             // Save with original encoding
             try
             {
@@ -1371,7 +1371,7 @@ public partial class MainForm : Form
                     IndentChars = "  ",
                     OmitXmlDeclaration = doc.Declaration == null
                 };
-                
+
                 using (var writer = XmlWriter.Create(filePath, settings))
                 {
                     doc.Save(writer);
@@ -1383,11 +1383,11 @@ public partial class MainForm : Form
             }
         });
     }
-    
+
     private NormalizedTfmSet NormalizeTfmSet(string tfmValue)
     {
         var normalizedSet = new NormalizedTfmSet();
-        
+
         // Check if it's a variable token (starts with $)
         if (tfmValue.StartsWith("$"))
         {
@@ -1397,16 +1397,16 @@ public partial class MainForm : Form
             normalizedSet.Tfms = new List<string> { tfmValue };
             return normalizedSet;
         }
-        
+
         // It's a literal or semicolon-separated list
         var tfms = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
                           .Select(t => t.Trim())
                           .Where(t => !string.IsNullOrEmpty(t))
                           .ToList();
-        
+
         // Check if the list contains any variables
         bool hasVariables = tfms.Any(t => t.StartsWith("$"));
-        
+
         if (hasVariables)
         {
             // If any TFM is a variable, treat the entire set as requiring exact match
@@ -1415,18 +1415,18 @@ public partial class MainForm : Form
             normalizedSet.Tfms = tfms; // Keep original order and case
             return normalizedSet;
         }
-        
+
         // All are literals - normalize: order-insensitive, case-insensitive
         var normalizedTfms = tfms.Select(t => t.ToLowerInvariant())
                                  .OrderBy(t => t)
                                  .ToList();
-        
+
         normalizedSet.IsVariable = false;
         normalizedSet.Tfms = normalizedTfms;
-        
+
         return normalizedSet;
     }
-    
+
     private async Task<string> ConvertOldStyleToSdkAsync(string filePath, string oldTfm)
     {
         return await Task.Run(() =>
@@ -1440,10 +1440,10 @@ public partial class MainForm : Form
                     throw new InvalidOperationException($"File is read-only: {filePath}");
                 }
             }
-            
+
             XDocument doc;
             System.Text.Encoding? encoding = null;
-            
+
             try
             {
                 // Detect encoding from file
@@ -1452,39 +1452,39 @@ public partial class MainForm : Form
                     reader.Peek(); // Force encoding detection
                     encoding = reader.CurrentEncoding;
                 }
-                
+
                 doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
             }
             catch (IOException ex)
             {
                 throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
             }
-            
+
             var root = doc.Root;
-            
+
             if (root == null)
             {
                 throw new InvalidOperationException("Invalid project file");
             }
-            
+
             // Check if already SDK-style
             if (root.Attribute("Sdk") != null)
             {
                 // Already SDK-style, skip
                 return ParseTargetFrameworks(root);
             }
-            
+
             XNamespace ns = root.GetDefaultNamespace();
-            
+
             // Detect if it's a WinForms project
             bool isWinForms = DetectWinFormsProject(root, ns);
-            
+
             // Convert framework version
             string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
-            
+
             // Create new SDK-style project
             var newRoot = new XElement("Project");
-            
+
             // Determine SDK attribute
             if (isWinForms)
             {
@@ -1494,50 +1494,50 @@ public partial class MainForm : Form
             {
                 newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
             }
-            
+
             // Create PropertyGroup with essential properties
             var propertyGroup = new XElement("PropertyGroup");
-            
+
             // Add TargetFramework
             propertyGroup.Add(new XElement("TargetFramework", newTfm));
-            
+
             // Add OutputType if needed
             var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
             if (outputType != null)
             {
                 propertyGroup.Add(new XElement("OutputType", outputType.Value));
             }
-            
+
             // Add WinForms specific properties if needed
             if (isWinForms)
             {
                 propertyGroup.Add(new XElement("UseWindowsForms", "true"));
                 propertyGroup.Add(new XElement("EnableWindowsTargeting", "true"));
             }
-            
+
             // Add common properties
             propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
             propertyGroup.Add(new XElement("Nullable", "enable"));
-            
+
             // Copy over RootNamespace if it exists
             var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
             if (rootNamespace != null)
             {
                 propertyGroup.Add(new XElement("RootNamespace", rootNamespace.Value));
             }
-            
+
             // Copy over AssemblyName if it exists
             var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
             if (assemblyName != null)
             {
                 propertyGroup.Add(new XElement("AssemblyName", assemblyName.Value));
             }
-            
+
             newRoot.Add(propertyGroup);
-            
+
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-            
+
             // Save the new document with encoding preservation
             try
             {
@@ -1548,7 +1548,7 @@ public partial class MainForm : Form
                     IndentChars = "  ",
                     OmitXmlDeclaration = false
                 };
-                
+
                 using (var writer = XmlWriter.Create(filePath, settings))
                 {
                     newDoc.Save(writer);
@@ -1558,39 +1558,39 @@ public partial class MainForm : Form
             {
                 throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
             }
-            
+
             return newTfm;
         });
     }
-    
+
     private bool DetectWinFormsProject(XElement root, XNamespace ns)
     {
         // Check for WinForms indicators
         var references = root.Descendants(ns + "Reference")
                             .Select(r => r.Attribute("Include")?.Value ?? "")
                             .ToList();
-        
-        bool hasWinFormsRef = references.Any(r => 
-            r.Contains("System.Windows.Forms") || 
+
+        bool hasWinFormsRef = references.Any(r =>
+            r.Contains("System.Windows.Forms") ||
             r.Contains("System.Drawing"));
-        
+
         // Check for UseWindowsForms property
         var useWindowsForms = root.Descendants(ns + "UseWindowsForms").FirstOrDefault();
         if (useWindowsForms != null && useWindowsForms.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
-        
+
         // Check for form files
         var compiles = root.Descendants(ns + "Compile")
                           .Select(c => c.Attribute("Include")?.Value ?? "")
                           .ToList();
-        
+
         bool hasFormFiles = compiles.Any(c => c.EndsWith(".Designer.cs"));
-        
+
         return hasWinFormsRef || hasFormFiles;
     }
-    
+
     private string ConvertFrameworkVersion(string oldTfm, bool isWinForms)
     {
         // Handle variable tokens - preserve them verbatim
@@ -1598,57 +1598,57 @@ public partial class MainForm : Form
         {
             return oldTfm;
         }
-        
+
         // Map old-style versions to SDK-style
         // Examples: v4.5 → net45, v4.7.2 → net472
         var trimmed = oldTfm.Trim();
-        
+
         if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
         {
             // Remove 'v' prefix and dots
             var version = trimmed.Substring(1).Replace(".", "");
             var newTfm = "net" + version;
-            
+
             // For .NET Framework 4.x versions on WinForms, add -windows suffix
             if (isWinForms && version.StartsWith("4"))
             {
                 newTfm += "-windows";
             }
-            
+
             return newTfm;
         }
-        
+
         // If it doesn't start with 'v', return as-is
         return trimmed;
     }
-    
+
     private (bool IsValid, string Reason) ValidateSdkToOldStyleConstraints(string filePath, string currentTfms)
     {
         try
         {
             var doc = XDocument.Load(filePath);
             var root = doc.Root;
-            
+
             if (root == null)
             {
                 return (false, "Invalid project file");
             }
-            
+
             // Skip if already Old-style
             if (root.Attribute("Sdk") == null)
             {
                 return (false, "Already Old-style");
             }
-            
+
             XNamespace ns = root.GetDefaultNamespace();
-            
+
             // Check for PackageReference items
             var packageReferences = root.Descendants(ns + "PackageReference").ToList();
             if (packageReferences.Count > 0)
             {
                 return (false, $"Has {packageReferences.Count} PackageReference(s)");
             }
-            
+
             // Check if it's a single .NET Framework target
             // Variable tokens are allowed and preserved
             if (currentTfms.StartsWith("$"))
@@ -1656,21 +1656,21 @@ public partial class MainForm : Form
                 // It's a variable token - allow it (will be preserved verbatim)
                 return (true, "");
             }
-            
+
             // Check if multiple targets
             if (currentTfms.Contains(";"))
             {
                 return (false, "Multiple target frameworks");
             }
-            
+
             // Check if it's a .NET Framework target (net40–net48 or net40-windows–net48-windows)
             var tfmLower = currentTfms.ToLowerInvariant();
-            
+
             if (!IsNetFrameworkTarget(tfmLower))
             {
                 return (false, "Not a .NET Framework target");
             }
-            
+
             return (true, "");
         }
         catch (Exception ex)
@@ -1678,12 +1678,12 @@ public partial class MainForm : Form
             return (false, $"Error: {ex.Message}");
         }
     }
-    
+
     private bool IsNetFrameworkTarget(string tfm)
     {
         // Remove -windows suffix if present
         var baseTfm = tfm.Replace("-windows", "");
-        
+
         // Check if it's in the range net40–net48
         var validTargets = new[]
         {
@@ -1693,10 +1693,10 @@ public partial class MainForm : Form
             "net47", "net471", "net472",
             "net48", "net481"
         };
-        
+
         return validTargets.Contains(baseTfm);
     }
-    
+
     private async Task<string> ConvertSdkToOldStyleAsync(string filePath, string currentTfm)
     {
         return await Task.Run(() =>
@@ -1710,10 +1710,10 @@ public partial class MainForm : Form
                     throw new InvalidOperationException($"File is read-only: {filePath}");
                 }
             }
-            
+
             XDocument doc;
             System.Text.Encoding? encoding = null;
-            
+
             try
             {
                 // Detect encoding from file
@@ -1722,60 +1722,60 @@ public partial class MainForm : Form
                     reader.Peek(); // Force encoding detection
                     encoding = reader.CurrentEncoding;
                 }
-                
+
                 doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
             }
             catch (IOException ex)
             {
                 throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
             }
-            
+
             var root = doc.Root;
-            
+
             if (root == null)
             {
                 throw new InvalidOperationException("Invalid project file");
             }
-            
+
             // Check if already Old-style
             if (root.Attribute("Sdk") == null)
             {
                 // Already Old-style, skip
                 return ParseTargetFrameworks(root);
             }
-            
+
             XNamespace ns = root.GetDefaultNamespace();
             XNamespace msbuildNs = "http://schemas.microsoft.com/developer/msbuild/2003";
-            
+
             // Convert framework version from SDK-style to Old-style
             string newTfm = ConvertSdkToOldStyleFrameworkVersion(currentTfm);
-            
+
             // Detect if it's a WinForms project
             bool isWinForms = IsWinFormsInSdkProject(root, ns);
-            
+
             // Create new Old-style project
             var newRoot = new XElement(msbuildNs + "Project");
             newRoot.Add(new XAttribute("ToolsVersion", "15.0"));
-            
+
             // Default xmlns attribute
             newRoot.Add(new XAttribute("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003"));
-            
+
             // Import Microsoft.CSharp.targets at the beginning
             var importGroup1 = new XElement(msbuildNs + "Import");
             importGroup1.Add(new XAttribute("Project", @"$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"));
             importGroup1.Add(new XAttribute("Condition", @"Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"));
             newRoot.Add(importGroup1);
-            
+
             // Create PropertyGroup with essential properties
             var propertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            
+
             // Copy Configuration and Platform
             propertyGroup.Add(new XElement(msbuildNs + "Configuration", new XAttribute("Condition", " '$(Configuration)' == '' "), "Debug"));
             propertyGroup.Add(new XElement(msbuildNs + "Platform", new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU"));
-            
+
             // Add ProjectGuid
             propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", "{" + Guid.NewGuid().ToString().ToUpper() + "}"));
-            
+
             // Add OutputType
             var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
             if (outputType != null)
@@ -1786,7 +1786,7 @@ public partial class MainForm : Form
             {
                 propertyGroup.Add(new XElement(msbuildNs + "OutputType", "Library"));
             }
-            
+
             // Add RootNamespace
             var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
             if (rootNamespace != null)
@@ -1798,7 +1798,7 @@ public partial class MainForm : Form
                 // Use file name without extension
                 propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", Path.GetFileNameWithoutExtension(filePath)));
             }
-            
+
             // Add AssemblyName
             var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
             if (assemblyName != null)
@@ -1810,18 +1810,18 @@ public partial class MainForm : Form
                 // Use file name without extension
                 propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", Path.GetFileNameWithoutExtension(filePath)));
             }
-            
+
             // Add TargetFrameworkVersion
             propertyGroup.Add(new XElement(msbuildNs + "TargetFrameworkVersion", newTfm));
-            
+
             // Add FileAlignment
             propertyGroup.Add(new XElement(msbuildNs + "FileAlignment", "512"));
-            
+
             // Add Deterministic
             propertyGroup.Add(new XElement(msbuildNs + "Deterministic", "true"));
-            
+
             newRoot.Add(propertyGroup);
-            
+
             // Add Debug PropertyGroup
             var debugPropertyGroup = new XElement(msbuildNs + "PropertyGroup");
             debugPropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "));
@@ -1833,7 +1833,7 @@ public partial class MainForm : Form
             debugPropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
             debugPropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
             newRoot.Add(debugPropertyGroup);
-            
+
             // Add Release PropertyGroup
             var releasePropertyGroup = new XElement(msbuildNs + "PropertyGroup");
             releasePropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "));
@@ -1844,7 +1844,7 @@ public partial class MainForm : Form
             releasePropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
             releasePropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
             newRoot.Add(releasePropertyGroup);
-            
+
             // Add References ItemGroup
             var referencesGroup = new XElement(msbuildNs + "ItemGroup");
             referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System")));
@@ -1854,24 +1854,24 @@ public partial class MainForm : Form
             referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "Microsoft.CSharp")));
             referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data")));
             referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml")));
-            
+
             // Add WinForms references if needed
             if (isWinForms)
             {
                 referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Drawing")));
                 referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Windows.Forms")));
             }
-            
+
             newRoot.Add(referencesGroup);
-            
+
             // Import Microsoft.CSharp.targets at the end
             var importGroup2 = new XElement(msbuildNs + "Import");
             importGroup2.Add(new XAttribute("Project", @"$(MSBuildToolsPath)\Microsoft.CSharp.targets"));
             newRoot.Add(importGroup2);
-            
+
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-            
+
             // Save the new document with encoding preservation
             try
             {
@@ -1882,7 +1882,7 @@ public partial class MainForm : Form
                     IndentChars = "  ",
                     OmitXmlDeclaration = false
                 };
-                
+
                 using (var writer = XmlWriter.Create(filePath, settings))
                 {
                     newDoc.Save(writer);
@@ -1892,11 +1892,11 @@ public partial class MainForm : Form
             {
                 throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
             }
-            
+
             return newTfm;
         });
     }
-    
+
     private bool IsWinFormsInSdkProject(XElement root, XNamespace ns)
     {
         // Check for UseWindowsForms property
@@ -1905,10 +1905,10 @@ public partial class MainForm : Form
         {
             return true;
         }
-        
+
         return false;
     }
-    
+
     private string ConvertSdkToOldStyleFrameworkVersion(string sdkTfm)
     {
         // Handle variable tokens - preserve them verbatim
@@ -1916,19 +1916,19 @@ public partial class MainForm : Form
         {
             return sdkTfm;
         }
-        
+
         // Map SDK-style versions to Old-style
         // Examples: net45 → v4.5, net472 → v4.7.2, net48-windows → v4.8
         var trimmed = sdkTfm.Trim().ToLowerInvariant();
-        
+
         // Remove -windows suffix if present
         trimmed = trimmed.Replace("-windows", "");
-        
+
         if (trimmed.StartsWith("net"))
         {
             // Remove 'net' prefix
             var version = trimmed.Substring(3);
-            
+
             // Add dots back
             // net45 → 4.5, net472 → 4.7.2
             if (version.Length == 2)
@@ -1947,30 +1947,30 @@ public partial class MainForm : Form
                 return sdkTfm;
             }
         }
-        
+
         // If it doesn't start with 'net', return as-is
         return trimmed;
     }
-    
+
     private void InitializeComboBoxSuggestions()
     {
         // Populate both ComboBoxes with common TFMs
         targetFrameworkComboBox.Items.Clear();
         appendTargetFrameworkComboBox.Items.Clear();
-        
+
         foreach (var tfm in CommonTfms)
         {
             targetFrameworkComboBox.Items.Add(tfm);
             appendTargetFrameworkComboBox.Items.Add(tfm);
         }
     }
-    
+
     private void UpdateComboBoxSuggestions()
     {
         // Add discovered variables to ComboBoxes
         var currentTargetItems = targetFrameworkComboBox.Items.Cast<string>().ToHashSet();
         var currentAppendItems = appendTargetFrameworkComboBox.Items.Cast<string>().ToHashSet();
-        
+
         foreach (var variable in _discoveredVariables)
         {
             if (!currentTargetItems.Contains(variable))
@@ -1983,21 +1983,21 @@ public partial class MainForm : Form
             }
         }
     }
-    
+
     private void OpenContainingFolder_Click(object? sender, EventArgs e)
     {
         if (projectsGridView.SelectedRows.Count == 0)
             return;
-        
+
         var row = projectsGridView.SelectedRows[0];
         var filePath = row.Cells["FullPath"].Value?.ToString();
-        
+
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
         {
             MessageBox.Show("File not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
-        
+
         try
         {
             var folder = Path.GetDirectoryName(filePath);
@@ -2008,16 +2008,16 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to open folder: {ex.Message}", "Error", 
+            MessageBox.Show($"Failed to open folder: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
-    
+
     private void CopyPath_Click(object? sender, EventArgs e)
     {
         if (projectsGridView.SelectedRows.Count == 0)
             return;
-        
+
         var paths = new List<string>();
         foreach (DataGridViewRow row in projectsGridView.SelectedRows)
         {
@@ -2027,7 +2027,7 @@ public partial class MainForm : Form
                 paths.Add(filePath);
             }
         }
-        
+
         if (paths.Count > 0)
         {
             try
@@ -2037,26 +2037,26 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error", 
+                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
-    
+
     private void ProjectsGridView_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
     {
         if (e.RowIndex < 0)
             return;
-        
+
         var row = projectsGridView.Rows[e.RowIndex];
         var filePath = row.Cells["FullPath"].Value?.ToString();
-        
+
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
         {
             MessageBox.Show("File not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
-        
+
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -2067,48 +2067,48 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to open file: {ex.Message}", "Error", 
+            MessageBox.Show($"Failed to open file: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
-    
+
     private void ExportCsvButton_Click(object? sender, EventArgs e)
     {
         if (projectsGridView.Rows.Count == 0)
         {
-            MessageBox.Show("No data to export.", "Export CSV", 
+            MessageBox.Show("No data to export.", "Export CSV",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        
+
         using var saveFileDialog = new SaveFileDialog
         {
             Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
             DefaultExt = "csv",
             FileName = $"csproj_report_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
         };
-        
+
         if (saveFileDialog.ShowDialog() == DialogResult.OK)
         {
             try
             {
                 ExportToCsv(saveFileDialog.FileName);
                 statusLabel.Text = $"Exported {projectsGridView.Rows.Count} row(s) to {Path.GetFileName(saveFileDialog.FileName)}";
-                MessageBox.Show($"Data exported successfully to:\n{saveFileDialog.FileName}", 
+                MessageBox.Show($"Data exported successfully to:\n{saveFileDialog.FileName}",
                     "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to export CSV: {ex.Message}", "Export Error", 
+                MessageBox.Show($"Failed to export CSV: {ex.Message}", "Export Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
-    
+
     private void ExportToCsv(string filePath)
     {
         using var writer = new StreamWriter(filePath, false, System.Text.Encoding.UTF8);
-        
+
         // Write header
         var headers = new List<string>();
         foreach (DataGridViewColumn column in projectsGridView.Columns)
@@ -2116,7 +2116,7 @@ public partial class MainForm : Form
             headers.Add(EscapeCsvField(column.HeaderText));
         }
         writer.WriteLine(string.Join(",", headers));
-        
+
         // Write data
         foreach (DataGridViewRow row in projectsGridView.Rows)
         {
@@ -2128,7 +2128,7 @@ public partial class MainForm : Form
             writer.WriteLine(string.Join(",", values));
         }
     }
-    
+
     private string EscapeCsvField(string field)
     {
         // Escape double quotes and wrap in quotes if needed
@@ -2138,39 +2138,39 @@ public partial class MainForm : Form
         }
         return field;
     }
-    
+
     private class NormalizedTfmSet
     {
         public bool IsVariable { get; set; }
         public string? VariableToken { get; set; }
         public List<string> Tfms { get; set; } = new List<string>();
-        
+
         public override bool Equals(object? obj)
         {
             if (obj is not NormalizedTfmSet other)
                 return false;
-            
+
             // If one is variable and the other is not, they're not equal
             if (IsVariable != other.IsVariable)
                 return false;
-            
+
             // If both contain variables (IsVariable == true), compare exact lists
             if (IsVariable)
             {
                 // For variables, exact match required (case-sensitive, order-sensitive)
                 if (Tfms.Count != other.Tfms.Count)
                     return false;
-                
+
                 return Tfms.SequenceEqual(other.Tfms);
             }
-            
+
             // If both are literals, compare normalized TFM lists (already sorted and lowercased)
             if (Tfms.Count != other.Tfms.Count)
                 return false;
-            
+
             return Tfms.SequenceEqual(other.Tfms);
         }
-        
+
         public override int GetHashCode()
         {
             if (IsVariable)
@@ -2182,7 +2182,7 @@ public partial class MainForm : Form
                 }
                 return hash;
             }
-            
+
             int hashCode = IsVariable.GetHashCode();
             foreach (var tfm in Tfms)
             {
@@ -2191,13 +2191,13 @@ public partial class MainForm : Form
             return hashCode;
         }
     }
-    
+
     private class TfmToken
     {
         public string Value { get; set; } = "";
         public bool IsVariable { get; set; }
     }
-    
+
     private class ProjectInfo
     {
         public string FullPath { get; set; } = "";
