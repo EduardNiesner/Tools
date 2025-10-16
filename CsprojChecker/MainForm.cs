@@ -13,8 +13,11 @@ public partial class MainForm : Form
     private GroupBox frameworkOperationsGroupBox = null!;
     private GroupBox projectStyleGroupBox = null!;
     
-    // Placeholder controls for Framework operations region
-    private Label frameworkPlaceholderLabel = null!;
+    // Framework operations controls
+    private Label variableTfmTokenLabel = null!;
+    private TextBox variableTfmTokenTextBox = null!;
+    private Button changeTargetFrameworkButton = null!;
+    private ComboBox targetFrameworkComboBox = null!;
     
     // Placeholder controls for Project style conversions region
     private Label projectStylePlaceholderLabel = null!;
@@ -35,13 +38,15 @@ public partial class MainForm : Form
         this.Text = "Csproj Checker";
         this.Size = new Size(1000, 700);
         this.StartPosition = FormStartPosition.CenterScreen;
+        this.MinimumSize = new Size(800, 600);
         
         // Folder path TextBox
         folderPathTextBox = new TextBox
         {
             Location = new Point(20, 20),
             Size = new Size(600, 23),
-            Name = "folderPathTextBox"
+            Name = "folderPathTextBox",
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         
         // Browse Button (height increased by 25%)
@@ -50,7 +55,8 @@ public partial class MainForm : Form
             Location = new Point(630, 19),
             Size = new Size(100, 31),
             Text = "Browse",
-            Name = "browseButton"
+            Name = "browseButton",
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         browseButton.Click += BrowseButton_Click;
         
@@ -60,7 +66,8 @@ public partial class MainForm : Form
             Location = new Point(740, 19),
             Size = new Size(200, 31),
             Text = "Check for csproj files",
-            Name = "checkCsprojButton"
+            Name = "checkCsprojButton",
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         checkCsprojButton.Click += CheckCsprojButton_Click;
         
@@ -74,8 +81,10 @@ public partial class MainForm : Form
             AllowUserToDeleteRows = false,
             ReadOnly = true,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
+        projectsGridView.SelectionChanged += ProjectsGridView_SelectionChanged;
         
         // Add columns to DataGridView
         projectsGridView.Columns.Add(new DataGridViewTextBoxColumn
@@ -109,18 +118,54 @@ public partial class MainForm : Form
             Location = new Point(20, 320),
             Size = new Size(460, 150),
             Text = "Framework Operations",
-            Name = "frameworkOperationsGroupBox"
+            Name = "frameworkOperationsGroupBox",
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         };
         
-        // Placeholder label for Framework operations
-        frameworkPlaceholderLabel = new Label
+        // Variable TFM token label
+        variableTfmTokenLabel = new Label
         {
             Location = new Point(10, 25),
-            Size = new Size(440, 20),
-            Text = "Framework operations controls (placeholder)",
-            Name = "frameworkPlaceholderLabel"
+            Size = new Size(120, 20),
+            Text = "Variable TFM Token:",
+            Name = "variableTfmTokenLabel"
         };
-        frameworkOperationsGroupBox.Controls.Add(frameworkPlaceholderLabel);
+        
+        // Variable TFM token TextBox
+        variableTfmTokenTextBox = new TextBox
+        {
+            Location = new Point(135, 23),
+            Size = new Size(310, 23),
+            Text = "$(TargetFrameworks)",
+            Name = "variableTfmTokenTextBox"
+        };
+        variableTfmTokenTextBox.TextChanged += VariableTfmTokenTextBox_TextChanged;
+        
+        // Change target framework button
+        changeTargetFrameworkButton = new Button
+        {
+            Location = new Point(10, 60),
+            Size = new Size(200, 31),
+            Text = "Change target framework",
+            Name = "changeTargetFrameworkButton",
+            Enabled = false
+        };
+        changeTargetFrameworkButton.Click += ChangeTargetFrameworkButton_Click;
+        
+        // Target framework ComboBox
+        targetFrameworkComboBox = new ComboBox
+        {
+            Location = new Point(10, 100),
+            Size = new Size(435, 23),
+            Name = "targetFrameworkComboBox",
+            DropDownStyle = ComboBoxStyle.DropDown,
+            Enabled = false
+        };
+        
+        frameworkOperationsGroupBox.Controls.Add(variableTfmTokenLabel);
+        frameworkOperationsGroupBox.Controls.Add(variableTfmTokenTextBox);
+        frameworkOperationsGroupBox.Controls.Add(changeTargetFrameworkButton);
+        frameworkOperationsGroupBox.Controls.Add(targetFrameworkComboBox);
         
         // Project style conversions GroupBox
         projectStyleGroupBox = new GroupBox
@@ -128,7 +173,8 @@ public partial class MainForm : Form
             Location = new Point(500, 320),
             Size = new Size(460, 150),
             Text = "Project Style Conversions",
-            Name = "projectStyleGroupBox"
+            Name = "projectStyleGroupBox",
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         
         // Placeholder label for Project style conversions
@@ -147,7 +193,8 @@ public partial class MainForm : Form
             Location = new Point(20, 480),
             Size = new Size(840, 23),
             Text = "Ready",
-            Name = "statusLabel"
+            Name = "statusLabel",
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         
         // Cancel Button (height increased by 25%)
@@ -157,7 +204,8 @@ public partial class MainForm : Form
             Size = new Size(100, 31),
             Text = "Cancel",
             Name = "cancelButton",
-            Enabled = false
+            Enabled = false,
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
         cancelButton.Click += CancelButton_Click;
         
@@ -420,6 +468,159 @@ public partial class MainForm : Form
         }
         
         return "Not specified";
+    }
+    
+    private void ProjectsGridView_SelectionChanged(object? sender, EventArgs e)
+    {
+        UpdateFrameworkOperationsState();
+    }
+    
+    private void VariableTfmTokenTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        UpdateFrameworkOperationsState();
+    }
+    
+    private void ChangeTargetFrameworkButton_Click(object? sender, EventArgs e)
+    {
+        // Placeholder for actual implementation
+        MessageBox.Show("Change target framework functionality will be implemented in a future step.", 
+            "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+    
+    private void UpdateFrameworkOperationsState()
+    {
+        if (projectsGridView.SelectedRows.Count == 0)
+        {
+            changeTargetFrameworkButton.Enabled = false;
+            targetFrameworkComboBox.Enabled = false;
+            targetFrameworkComboBox.Items.Clear();
+            return;
+        }
+        
+        // Get the variable TFM token
+        string variableTfmToken = variableTfmTokenTextBox.Text.Trim();
+        
+        // Collect normalized TFM sets from all selected rows
+        List<NormalizedTfmSet> normalizedSets = new List<NormalizedTfmSet>();
+        
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            if (row.Cells["TargetFrameworks"].Value is string tfmValue)
+            {
+                var normalizedSet = NormalizeTfmSet(tfmValue, variableTfmToken);
+                normalizedSets.Add(normalizedSet);
+            }
+        }
+        
+        if (normalizedSets.Count == 0)
+        {
+            changeTargetFrameworkButton.Enabled = false;
+            targetFrameworkComboBox.Enabled = false;
+            targetFrameworkComboBox.Items.Clear();
+            return;
+        }
+        
+        // Check if all normalized sets are equal
+        bool allSetsEqual = normalizedSets.All(set => set.Equals(normalizedSets[0]));
+        
+        if (allSetsEqual)
+        {
+            changeTargetFrameworkButton.Enabled = true;
+            targetFrameworkComboBox.Enabled = true;
+            
+            // Prefill the ComboBox with the common TFM set
+            targetFrameworkComboBox.Items.Clear();
+            foreach (var tfm in normalizedSets[0].Tfms)
+            {
+                targetFrameworkComboBox.Items.Add(tfm);
+            }
+            
+            if (targetFrameworkComboBox.Items.Count > 0)
+            {
+                targetFrameworkComboBox.SelectedIndex = 0;
+            }
+        }
+        else
+        {
+            changeTargetFrameworkButton.Enabled = false;
+            targetFrameworkComboBox.Enabled = false;
+            targetFrameworkComboBox.Items.Clear();
+        }
+    }
+    
+    private NormalizedTfmSet NormalizeTfmSet(string tfmValue, string variableTfmToken)
+    {
+        var normalizedSet = new NormalizedTfmSet();
+        
+        // Check if it's a variable token
+        if (tfmValue.StartsWith("$"))
+        {
+            // It's a variable - exact match required
+            normalizedSet.IsVariable = true;
+            normalizedSet.VariableToken = tfmValue;
+            normalizedSet.Tfms = new List<string> { tfmValue };
+            return normalizedSet;
+        }
+        
+        // It's a literal or semicolon-separated list
+        var tfms = tfmValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                          .Select(t => t.Trim())
+                          .Where(t => !string.IsNullOrEmpty(t))
+                          .ToList();
+        
+        // Normalize: order-insensitive, case-insensitive for literals
+        var normalizedTfms = tfms.Select(t => t.ToLowerInvariant())
+                                 .OrderBy(t => t)
+                                 .ToList();
+        
+        normalizedSet.IsVariable = false;
+        normalizedSet.Tfms = normalizedTfms;
+        
+        return normalizedSet;
+    }
+    
+    private class NormalizedTfmSet
+    {
+        public bool IsVariable { get; set; }
+        public string? VariableToken { get; set; }
+        public List<string> Tfms { get; set; } = new List<string>();
+        
+        public override bool Equals(object? obj)
+        {
+            if (obj is not NormalizedTfmSet other)
+                return false;
+            
+            // If one is variable and the other is not, they're not equal
+            if (IsVariable != other.IsVariable)
+                return false;
+            
+            // If both are variables, compare exact token match
+            if (IsVariable)
+            {
+                return VariableToken == other.VariableToken;
+            }
+            
+            // If both are literals, compare normalized TFM lists
+            if (Tfms.Count != other.Tfms.Count)
+                return false;
+            
+            return Tfms.SequenceEqual(other.Tfms);
+        }
+        
+        public override int GetHashCode()
+        {
+            if (IsVariable)
+            {
+                return HashCode.Combine(IsVariable, VariableToken);
+            }
+            
+            int hash = IsVariable.GetHashCode();
+            foreach (var tfm in Tfms)
+            {
+                hash = HashCode.Combine(hash, tfm);
+            }
+            return hash;
+        }
     }
     
     private class ProjectInfo
