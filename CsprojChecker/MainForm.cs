@@ -6,10 +6,11 @@ namespace CsprojChecker;
 
 public partial class MainForm : Form
 {
-    private TextBox folderPathTextBox = null!;
+    private ComboBox folderPathComboBox = null!;
     private Button browseButton = null!;
     private Button checkCsprojButton = null!;
     private Button exportCsvButton = null!;
+    private TextBox fileFilterTextBox = null!;
     private DataGridView projectsGridView = null!;
     private Label statusLabel = null!;
     private Button cancelButton = null!;
@@ -31,6 +32,9 @@ public partial class MainForm : Form
 
     // Track discovered variables
     private HashSet<string> _discoveredVariables = new HashSet<string>();
+
+    // Store all scanned projects for filtering
+    private List<ProjectInfo> _allProjects = new List<ProjectInfo>();
 
     // Settings file path
     private static readonly string SettingsDirectory = Path.Combine(
@@ -76,19 +80,31 @@ public partial class MainForm : Form
         this.StartPosition = FormStartPosition.CenterScreen;
         this.MinimumSize = new Size(800, 600);
 
-        // Folder path TextBox
-        folderPathTextBox = new TextBox
+        // File filter TextBox
+        fileFilterTextBox = new TextBox
         {
             Location = new Point(20, 20),
+            Size = new Size(940, 23),
+            Name = "fileFilterTextBox",
+            PlaceholderText = "Filter files by path...",
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+        fileFilterTextBox.TextChanged += FileFilterTextBox_TextChanged;
+
+        // Folder path ComboBox
+        folderPathComboBox = new ComboBox
+        {
+            Location = new Point(20, 53),
             Size = new Size(600, 23),
-            Name = "folderPathTextBox",
+            Name = "folderPathComboBox",
+            DropDownStyle = ComboBoxStyle.DropDown,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
 
         // Browse Button (height increased by 25%)
         browseButton = new Button
         {
-            Location = new Point(630, 19),
+            Location = new Point(630, 52),
             Size = new Size(100, 31),
             Text = "Browse",
             Name = "browseButton",
@@ -99,7 +115,7 @@ public partial class MainForm : Form
         // Check for csproj files Button (height increased by 25%)
         checkCsprojButton = new Button
         {
-            Location = new Point(740, 19),
+            Location = new Point(740, 52),
             Size = new Size(140, 31),
             Text = "Check for csproj files",
             Name = "checkCsprojButton",
@@ -110,7 +126,7 @@ public partial class MainForm : Form
         // Export to CSV Button
         exportCsvButton = new Button
         {
-            Location = new Point(890, 19),
+            Location = new Point(890, 52),
             Size = new Size(70, 31),
             Text = "Export CSV",
             Name = "exportCsvButton",
@@ -121,8 +137,8 @@ public partial class MainForm : Form
         // DataGridView
         projectsGridView = new DataGridView
         {
-            Location = new Point(20, 60),
-            Size = new Size(940, 250),
+            Location = new Point(20, 93),
+            Size = new Size(940, 217),
             Name = "projectsGridView",
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
@@ -285,7 +301,8 @@ public partial class MainForm : Form
         cancelButton.Click += CancelButton_Click;
 
         // Add controls to form
-        this.Controls.Add(folderPathTextBox);
+        this.Controls.Add(fileFilterTextBox);
+        this.Controls.Add(folderPathComboBox);
         this.Controls.Add(browseButton);
         this.Controls.Add(checkCsprojButton);
         this.Controls.Add(exportCsvButton);
@@ -300,6 +317,56 @@ public partial class MainForm : Form
 
     // Event handlers - placeholders with no business logic yet
 
+    private void FileFilterTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var filterText = fileFilterTextBox.Text.Trim();
+
+        // Clear the grid
+        projectsGridView.Rows.Clear();
+
+        if (string.IsNullOrWhiteSpace(filterText))
+        {
+            // No filter, show all projects
+            foreach (var project in _allProjects)
+            {
+                projectsGridView.Rows.Add(
+                    project.FullPath,
+                    project.Style,
+                    project.TargetFrameworks,
+                    project.Changed
+                );
+            }
+        }
+        else
+        {
+            // Apply filter - match any part of the full path (case-insensitive)
+            var filteredProjects = _allProjects.Where(p =>
+                p.FullPath.Contains(filterText, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+            foreach (var project in filteredProjects)
+            {
+                projectsGridView.Rows.Add(
+                    project.FullPath,
+                    project.Style,
+                    project.TargetFrameworks,
+                    project.Changed
+                );
+            }
+
+            // Update status to show filtered count
+            if (_allProjects.Count > 0)
+            {
+                statusLabel.Text = $"Showing {filteredProjects.Count} of {_allProjects.Count} project(s)";
+            }
+        }
+    }
+
     private void BrowseButton_Click(object? sender, EventArgs e)
     {
         using var folderBrowserDialog = new FolderBrowserDialog
@@ -309,20 +376,20 @@ public partial class MainForm : Form
             ShowNewFolderButton = false
         };
 
-        if (!string.IsNullOrWhiteSpace(folderPathTextBox.Text) && Directory.Exists(folderPathTextBox.Text))
+        if (!string.IsNullOrWhiteSpace(folderPathComboBox.Text) && Directory.Exists(folderPathComboBox.Text))
         {
-            folderBrowserDialog.SelectedPath = folderPathTextBox.Text;
+            folderBrowserDialog.SelectedPath = folderPathComboBox.Text;
         }
 
         if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
         {
-            folderPathTextBox.Text = folderBrowserDialog.SelectedPath;
+            folderPathComboBox.Text = folderBrowserDialog.SelectedPath;
         }
     }
 
     private async void CheckCsprojButton_Click(object? sender, EventArgs e)
     {
-        var folderPath = folderPathTextBox.Text;
+        var folderPath = folderPathComboBox.Text;
 
         if (string.IsNullOrWhiteSpace(folderPath))
         {
@@ -344,6 +411,7 @@ public partial class MainForm : Form
         // Clear existing data
         projectsGridView.Rows.Clear();
         _discoveredVariables.Clear();
+        _allProjects.Clear();
 
         // Setup cancellation token
         _cancellationTokenSource = new CancellationTokenSource();
@@ -365,10 +433,13 @@ public partial class MainForm : Form
             }
             else
             {
-                statusLabel.Text = $"Scan complete. Found {projectsGridView.Rows.Count} project(s)";
+                statusLabel.Text = $"Scan complete. Found {_allProjects.Count} project(s)";
 
                 // Update ComboBox suggestions with discovered variables
                 UpdateComboBoxSuggestions();
+
+                // Apply current filter
+                ApplyFilter();
             }
         }
         catch (OperationCanceledException)
@@ -420,6 +491,9 @@ public partial class MainForm : Form
 
                 var projectInfo = await ParseCsprojFileAsync(csprojFile, cancellationToken);
 
+                // Store in the list for filtering
+                _allProjects.Add(projectInfo);
+
                 // Update UI on UI thread
                 this.Invoke(() =>
                 {
@@ -430,7 +504,7 @@ public partial class MainForm : Form
                         projectInfo.Changed
                     );
 
-                    statusLabel.Text = $"Scanning... Found {projectsGridView.Rows.Count} project(s)";
+                    statusLabel.Text = $"Scanning... Found {_allProjects.Count} project(s)";
                 });
 
                 // Small delay to allow UI to update smoothly
@@ -2158,9 +2232,23 @@ public partial class MainForm : Form
                 var json = File.ReadAllText(SettingsFilePath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json);
 
-                if (settings?.LastFolderPath != null && Directory.Exists(settings.LastFolderPath))
+                if (settings?.RecentDirectories != null && settings.RecentDirectories.Count > 0)
                 {
-                    folderPathTextBox.Text = settings.LastFolderPath;
+                    // Populate the combobox with recent directories
+                    folderPathComboBox.Items.Clear();
+                    foreach (var dir in settings.RecentDirectories)
+                    {
+                        if (Directory.Exists(dir))
+                        {
+                            folderPathComboBox.Items.Add(dir);
+                        }
+                    }
+
+                    // Select the most recent directory (first in list)
+                    if (folderPathComboBox.Items.Count > 0)
+                    {
+                        folderPathComboBox.SelectedIndex = 0;
+                    }
                 }
             }
         }
@@ -2181,17 +2269,45 @@ public partial class MainForm : Form
                 Directory.CreateDirectory(SettingsDirectory);
             }
 
-            var settings = new AppSettings
+            // Load existing settings or create new
+            AppSettings settings;
+            if (File.Exists(SettingsFilePath))
             {
-                LastFolderPath = folderPath
-            };
+                var json = File.ReadAllText(SettingsFilePath);
+                settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            }
+            else
+            {
+                settings = new AppSettings();
+            }
 
-            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+            // Remove the folder path if it already exists (to avoid duplicates)
+            settings.RecentDirectories.RemoveAll(d => 
+                string.Equals(d, folderPath, StringComparison.OrdinalIgnoreCase));
+
+            // Add the new path at the beginning (most recent)
+            settings.RecentDirectories.Insert(0, folderPath);
+
+            // Keep only the last 10 directories
+            if (settings.RecentDirectories.Count > 10)
+            {
+                settings.RecentDirectories = settings.RecentDirectories.Take(10).ToList();
+            }
+
+            var jsonToSave = JsonSerializer.Serialize(settings, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
 
-            File.WriteAllText(SettingsFilePath, json);
+            File.WriteAllText(SettingsFilePath, jsonToSave);
+
+            // Update the combobox
+            folderPathComboBox.Items.Clear();
+            foreach (var dir in settings.RecentDirectories)
+            {
+                folderPathComboBox.Items.Add(dir);
+            }
+            folderPathComboBox.SelectedIndex = 0;
         }
         catch
         {
@@ -2202,7 +2318,7 @@ public partial class MainForm : Form
 
     private class AppSettings
     {
-        public string? LastFolderPath { get; set; }
+        public List<string> RecentDirectories { get; set; } = new List<string>();
     }
 
     private class NormalizedTfmSet
