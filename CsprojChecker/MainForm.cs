@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using System.Xml;
+using System.Text.Json;
 
 namespace CsprojChecker;
 
@@ -31,6 +32,12 @@ public partial class MainForm : Form
     // Track discovered variables
     private HashSet<string> _discoveredVariables = new HashSet<string>();
 
+    // Settings file path
+    private static readonly string SettingsDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "CsprojChecker");
+    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
+
     // Common TFMs
     private static readonly string[] CommonTfms = new[]
     {
@@ -56,6 +63,7 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        LoadSettings();
     }
 
     private void InitializeComponent()
@@ -329,6 +337,9 @@ public partial class MainForm : Form
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
+
+        // Save the folder path to settings
+        SaveSettings(folderPath);
 
         // Clear existing data
         projectsGridView.Rows.Clear();
@@ -2136,6 +2147,62 @@ public partial class MainForm : Form
             return $"\"{field.Replace("\"", "\"\"")}\"";
         }
         return field;
+    }
+
+    private void LoadSettings()
+    {
+        try
+        {
+            if (File.Exists(SettingsFilePath))
+            {
+                var json = File.ReadAllText(SettingsFilePath);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+
+                if (settings?.LastFolderPath != null && Directory.Exists(settings.LastFolderPath))
+                {
+                    folderPathTextBox.Text = settings.LastFolderPath;
+                }
+            }
+        }
+        catch
+        {
+            // If settings file is corrupted or unreadable, just ignore it
+            // The app will work with an empty path
+        }
+    }
+
+    private void SaveSettings(string folderPath)
+    {
+        try
+        {
+            // Ensure settings directory exists
+            if (!Directory.Exists(SettingsDirectory))
+            {
+                Directory.CreateDirectory(SettingsDirectory);
+            }
+
+            var settings = new AppSettings
+            {
+                LastFolderPath = folderPath
+            };
+
+            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            File.WriteAllText(SettingsFilePath, json);
+        }
+        catch
+        {
+            // If we can't save settings, don't fail the operation
+            // Just continue without persisting
+        }
+    }
+
+    private class AppSettings
+    {
+        public string? LastFolderPath { get; set; }
     }
 
     private class NormalizedTfmSet
