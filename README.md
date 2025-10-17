@@ -24,6 +24,7 @@ dotnet run --project CsprojChecker
 ### Current (Step 8 - Polish and resilience)
 - Main window with folder selection
 - Browse button to select folders containing .csproj files
+- **Last folder path persistence:** Automatically saves and restores the last selected folder path
 - Recursive async scanning for .csproj files
 - Real-time DataGridView updates as files are discovered
 - Parse and display project style (SDK vs Old-style)
@@ -146,7 +147,8 @@ Uses XML parsing to determine project characteristics:
 
 ### UI Features
 - **Browse Button**: Opens folder browser dialog with memory of last path
-- **Check Button**: Initiates async scan with real-time updates
+- **Check Button**: Initiates async scan with real-time updates and saves the folder path for next session
+- **Settings Persistence**: Last used folder path is saved to `%APPDATA%\CsprojChecker\settings.json`
 - **Export CSV Button**: Exports current grid data to CSV file
 - **Cancel Button**: Stops in-progress scans
 - **Status Label**: Shows progress during scans and operation results
