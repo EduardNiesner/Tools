@@ -334,12 +334,18 @@ public partial class MainForm : Form
             // No filter, show all projects
             foreach (var project in _allProjects)
             {
-                projectsGridView.Rows.Add(
+                var rowIndex = projectsGridView.Rows.Add(
                     project.FullPath,
                     project.Style,
                     project.TargetFrameworks,
                     project.Changed
                 );
+                
+                // Restore background color if changed
+                if (project.Changed == "✓")
+                {
+                    projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                }
             }
         }
         else
@@ -351,12 +357,18 @@ public partial class MainForm : Form
 
             foreach (var project in filteredProjects)
             {
-                projectsGridView.Rows.Add(
+                var rowIndex = projectsGridView.Rows.Add(
                     project.FullPath,
                     project.Style,
                     project.TargetFrameworks,
                     project.Changed
                 );
+                
+                // Restore background color if changed
+                if (project.Changed == "✓")
+                {
+                    projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+                }
             }
 
             // Update status to show filtered count
@@ -697,6 +709,14 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
 
+                // Update the stored project info
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.TargetFrameworks = newValue;
+                    project.Changed = "✓";
+                }
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newValue}");
             }
@@ -792,6 +812,14 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
 
+                // Update the stored project info
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.TargetFrameworks = newTfms;
+                    project.Changed = "✓";
+                }
+
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
             }
@@ -881,6 +909,15 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+
+                // Update the stored project info
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.Style = "SDK";
+                    project.TargetFrameworks = newTfms;
+                    project.Changed = "✓";
+                }
 
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
@@ -1019,6 +1056,15 @@ public partial class MainForm : Form
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
                 projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
                 projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+
+                // Update the stored project info
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.Style = "Old-style";
+                    project.TargetFrameworks = newTfms;
+                    project.Changed = "✓";
+                }
 
                 successCount++;
                 results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfms}");
