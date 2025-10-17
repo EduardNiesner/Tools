@@ -23,8 +23,17 @@ dotnet run --project CsprojChecker
 
 ### Current (Step 8 - Polish and resilience)
 - Main window with folder selection
-- Browse button to select folders containing .csproj files
-- **Last folder path persistence:** Automatically saves and restores the last selected folder path
+- **Directory ComboBox:** Browse button and ComboBox to select folders containing .csproj files
+  - ComboBox displays the last 10 unique directories selected by the user
+  - Automatically selects the most recent directory on startup
+  - Directories are persisted to `%APPDATA%\CsprojChecker\settings.json`
+  - Most recent directories are shown at the top of the list
+  - Directories are unique (no duplicates)
+- **File Filtering TextBox:** Real-time filtering of files in the table
+  - Filter textbox at the top of the GUI
+  - Matches any word or folder name within the full path (including file name)
+  - Filtering updates in real-time as the user types
+  - Status label shows filtered count (e.g., "Showing 5 of 20 project(s)")
 - Recursive async scanning for .csproj files
 - Real-time DataGridView updates as files are discovered
 - Parse and display project style (SDK vs Old-style)
@@ -147,8 +156,16 @@ Uses XML parsing to determine project characteristics:
 
 ### UI Features
 - **Browse Button**: Opens folder browser dialog with memory of last path
+- **Directory ComboBox**: Displays the last 10 unique directories selected by the user
+  - Automatically selects the most recent directory on startup
+  - Directories are persisted to `%APPDATA%\CsprojChecker\settings.json`
+  - Most recent directories are shown at the top of the dropdown list
+- **File Filtering TextBox**: Real-time filtering of files in the table
+  - Located at the top of the GUI
+  - Matches any part of the full path (case-insensitive)
+  - Updates the grid in real-time as the user types
+  - Status label shows filtered count when a filter is active
 - **Check Button**: Initiates async scan with real-time updates and saves the folder path for next session
-- **Settings Persistence**: Last used folder path is saved to `%APPDATA%\CsprojChecker\settings.json`
 - **Export CSV Button**: Exports current grid data to CSV file
 - **Cancel Button**: Stops in-progress scans
 - **Status Label**: Shows progress during scans and operation results
