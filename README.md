@@ -116,6 +116,10 @@ dotnet run --project CsprojChecker
 - `CsprojChecker/` - Main WinForms application
   - `Program.cs` - Application entry point
   - `MainForm.cs` - Main application form with UI layout and scanning logic
+- `docs/` - Documentation
+  - `csproj-conversion-reference.md` - Comprehensive technical specification for Old-style ↔ SDK-style conversions
+  - `conversion-validation.md` - Validation report proving implementation compliance
+  - `conversion-quick-reference.md` - Quick reference guide for developers
 
 ## Implementation Details
 
@@ -172,3 +176,11 @@ Uses XML parsing to determine project characteristics:
   - Handles locked files gracefully with appropriate error reporting
   - Specific exception handling for file access issues vs. other errors
 - **Minimal Churn**: Preserves whitespace and declaration settings to minimize unnecessary file changes
+
+## Documentation
+
+For detailed information about the .csproj conversion logic:
+
+- **[Conversion Reference](docs/csproj-conversion-reference.md)** - Comprehensive technical specification defining all Old-style ↔ SDK-style conversion mappings, constraints, and test cases
+- **[Conversion Validation](docs/conversion-validation.md)** - Validation report demonstrating 100% compliance with the conversion reference
+- **[Quick Reference](docs/conversion-quick-reference.md)** - Developer quick reference guide with examples and common use cases
