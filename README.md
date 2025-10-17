@@ -120,6 +120,10 @@ dotnet run --project CsprojChecker
   - `csproj-conversion-reference.md` - Comprehensive technical specification for Old-style ↔ SDK-style conversions
   - `conversion-validation.md` - Validation report proving implementation compliance
   - `conversion-quick-reference.md` - Quick reference guide for developers
+  - `testing-guide.md` - Manual testing procedures for validating conversions
+  - `conversion-checklist.md` - Compact checklist for code reviews and validation
+- `.github/` - GitHub configuration
+  - `pull_request_template.md` - PR template with conversion validation checklist
 
 ## Implementation Details
 
@@ -184,3 +188,5 @@ For detailed information about the .csproj conversion logic:
 - **[Conversion Reference](docs/csproj-conversion-reference.md)** - Comprehensive technical specification defining all Old-style ↔ SDK-style conversion mappings, constraints, and test cases
 - **[Conversion Validation](docs/conversion-validation.md)** - Validation report demonstrating 100% compliance with the conversion reference
 - **[Quick Reference](docs/conversion-quick-reference.md)** - Developer quick reference guide with examples and common use cases
+- **[Testing Guide](docs/testing-guide.md)** - Manual testing procedures for validating conversion functionality
+- **[Conversion Checklist](docs/conversion-checklist.md)** - Compact checklist for code reviews and validation
