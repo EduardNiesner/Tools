@@ -295,7 +295,7 @@ public partial class MainForm : Form
             Name = "targetFrameworkComboBox",
             DropDownStyle = ComboBoxStyle.DropDown,
             Enabled = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
             TabIndex = 1
         };
         targetFrameworkComboBox.AccessibleName = "Target Framework Selection";
@@ -309,7 +309,7 @@ public partial class MainForm : Form
             Text = "Change target framework",
             Name = "changeTargetFrameworkButton",
             Enabled = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
             TabIndex = 2
         };
         changeTargetFrameworkButton.Click += ChangeTargetFrameworkButton_Click;
@@ -336,7 +336,7 @@ public partial class MainForm : Form
             Name = "appendTargetFrameworkComboBox",
             DropDownStyle = ComboBoxStyle.DropDown,
             Enabled = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
             TabIndex = 4
         };
         appendTargetFrameworkComboBox.AccessibleName = "Append Framework Selection";
@@ -350,7 +350,7 @@ public partial class MainForm : Form
             Text = "Append target framework",
             Name = "appendTargetFrameworkButton",
             Enabled = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
             TabIndex = 5
         };
         appendTargetFrameworkButton.Click += AppendTargetFrameworkButton_Click;
