@@ -2247,7 +2247,11 @@ public partial class MainForm : Form
                 continue;
             }
 
-            clone.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+            XName attributeName = attribute.Name.Namespace == XNamespace.None
+                ? attribute.Name.LocalName
+                : attribute.Name;
+
+            clone.Add(new XAttribute(attributeName, attribute.Value));
         }
 
         foreach (var node in element.Nodes())
@@ -2288,7 +2292,11 @@ public partial class MainForm : Form
                 continue;
             }
 
-            clone.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+            XName attributeName = attribute.Name.Namespace == XNamespace.None
+                ? attribute.Name.LocalName
+                : attribute.Name;
+
+            clone.Add(new XAttribute(attributeName, attribute.Value));
         }
 
         foreach (var node in element.Nodes())
