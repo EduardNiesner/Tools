@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
+using System.Text;
 
 namespace CsprojChecker;
 
@@ -1958,70 +1959,44 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            if (File.Exists(filePath))
-            {
-                var fileInfo = new FileInfo(filePath);
-                if (fileInfo.IsReadOnly)
-                {
-                    throw new InvalidOperationException($"File is read-only: {filePath}");
-                }
-            }
+            if (!File.Exists(filePath))
+                throw new FileNotFoundException("Project file not found", filePath);
 
-            XDocument doc;
-            System.Text.Encoding? encoding = null;
-
-            try
-            {
-                using (var reader = new StreamReader(filePath, true))
-                {
-                    reader.Peek();
-                    encoding = reader.CurrentEncoding;
-                }
-
-                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
-            }
-
-            var root = doc.Root ?? throw new InvalidOperationException("Invalid project file");
-
-            if (root.Attribute("Sdk") != null)
-            {
-                return ParseTargetFrameworks(root);
-            }
+            var fileInfo = new FileInfo(filePath);
+            if (fileInfo.IsReadOnly)
+                throw new InvalidOperationException($"File is read-only: {filePath}");
 
             var backupPath = filePath + ".bak";
+            File.Copy(filePath, backupPath, overwrite: true);
 
-            try
+            XDocument doc;
+            Encoding? encoding;
+            using (var reader = new StreamReader(filePath, true))
             {
-                File.Copy(filePath, backupPath, overwrite: true);
+                reader.Peek();
+                encoding = reader.CurrentEncoding;
             }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"Failed to create backup: {ex.Message}");
-            }
+            doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
+
+            var root = doc.Root ?? throw new InvalidOperationException("Invalid project file");
+            if (root.Attribute("Sdk") != null)
+                return ParseTargetFrameworks(root); // Already SDK-style
 
             XNamespace ns = root.GetDefaultNamespace();
 
+            // Detect project type
             bool isWinForms = DetectWinFormsProject(root, ns);
             bool isWpf = DetectWpfProject(root, ns);
+            bool isDesktop = isWinForms || isWpf;
 
-            var mappedTfm = MapLegacyFrameworkToModernTfm(oldTfm);
+            // Use legacy-to-modern mapping (does not force net9)
+            string mappedTfm = MapLegacyFrameworkToModernTfm(oldTfm, isDesktop);
+            string sdkValue = isDesktop ? "Microsoft.NET.Sdk.WindowsDesktop" : "Microsoft.NET.Sdk";
 
-            if ((isWinForms || isWpf) && !mappedTfm.Contains("-windows", StringComparison.OrdinalIgnoreCase))
-            {
-                mappedTfm += "-windows";
-            }
-
-            var sdkValue = (isWinForms || isWpf)
-                ? "Microsoft.NET.Sdk.WindowsDesktop"
-                : "Microsoft.NET.Sdk";
-
+            // Build new project structure
             var project = new XElement("Project", new XAttribute("Sdk", sdkValue));
-
             var propertyGroup = new XElement("PropertyGroup");
+
             propertyGroup.Add(new XElement("TargetFramework", mappedTfm));
             propertyGroup.Add(new XElement("Nullable", "enable"));
             propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
@@ -2030,158 +2005,50 @@ public partial class MainForm : Form
             AddPropertyIfExists(propertyGroup, root, ns, "OutputType");
             AddPropertyIfExists(propertyGroup, root, ns, "RootNamespace");
             AddPropertyIfExists(propertyGroup, root, ns, "AssemblyName");
-            AddPropertyIfExists(propertyGroup, root, ns, "StartupObject");
-            AddPropertyIfExists(propertyGroup, root, ns, "ApplicationIcon");
-            AddPropertyIfExists(propertyGroup, root, ns, "SignAssembly");
-            AddPropertyIfExists(propertyGroup, root, ns, "AssemblyOriginatorKeyFile");
-            AddPropertyIfExists(propertyGroup, root, ns, "DelaySign");
-            AddPropertyIfExists(propertyGroup, root, ns, "NeutralLanguage");
 
             if (isWinForms)
-            {
                 propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-            }
-
             if (isWpf)
-            {
                 propertyGroup.Add(new XElement("UseWPF", "true"));
-            }
 
             project.Add(propertyGroup);
 
-            var customImports = CollectCustomImports(root, ns);
+            // Preserve PackageReferences
+            var packageRefs = root
+                .Descendants(ns + "PackageReference")
+                .Select(CloneElementWithoutNamespace)
+                .ToList();
 
-            foreach (var import in customImports)
+            if (packageRefs.Any())
             {
-                project.Add(import);
-            }
-
-            foreach (var propertyGroupElement in root.Elements(ns + "PropertyGroup")
-                                                    .Where(pg => pg.Attribute("Condition") != null))
-            {
-                var sanitized = SanitizePropertyGroup(propertyGroupElement);
-                if (sanitized != null)
-                {
-                    project.Add(sanitized);
-                }
-            }
-
-            var packageReferences = new List<XElement>();
-            var generalItemGroups = new List<XElement>();
-            bool hasExplicitDefaultItems = false;
-
-            foreach (var itemGroup in root.Elements(ns + "ItemGroup"))
-            {
-                var newGroup = new XElement("ItemGroup");
-                bool groupHasElements = false;
-
-                foreach (var attribute in itemGroup.Attributes())
-                {
-                    if (!attribute.IsNamespaceDeclaration)
-                    {
-                        newGroup.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
-                    }
-                }
-
-                foreach (var item in itemGroup.Elements())
-                {
-                    var localName = item.Name.LocalName;
-
-                    if (localName is "Compile" or "None" or "Content" or "EmbeddedResource")
-                    {
-                        if (ShouldKeepDefaultItem(item))
-                        {
-                            hasExplicitDefaultItems = true;
-                            newGroup.Add(CloneElementWithoutNamespace(item));
-                            groupHasElements = true;
-                        }
-
-                        continue;
-                    }
-
-                    if (localName == "Reference")
-                    {
-                        if (TryCreatePackageReference(item, ns, out var packageReference))
-                        {
-                            packageReferences.Add(packageReference);
-                            continue;
-                        }
-
-                        newGroup.Add(CloneElementWithoutNamespace(item));
-                        groupHasElements = true;
-                        continue;
-                    }
-
-                    if (localName == "PackageReference")
-                    {
-                        packageReferences.Add(CloneElementWithoutNamespace(item));
-                        continue;
-                    }
-
-                    newGroup.Add(CloneElementWithoutNamespace(item));
-                    groupHasElements = true;
-                }
-
-                if (groupHasElements)
-                {
-                    generalItemGroups.Add(newGroup);
-                }
-            }
-
-            if (packageReferences.Count > 0)
-            {
-                var packageGroup = new XElement("ItemGroup");
-                foreach (var packageReference in packageReferences)
-                {
-                    packageGroup.Add(packageReference);
-                }
-
-                generalItemGroups.Insert(0, packageGroup);
-            }
-
-            if (hasExplicitDefaultItems)
-            {
-                propertyGroup.Add(new XElement("EnableDefaultItems", "false"));
-            }
-
-            foreach (var group in generalItemGroups)
-            {
+                var group = new XElement("ItemGroup");
+                foreach (var pkg in packageRefs)
+                    group.Add(pkg);
                 project.Add(group);
             }
 
-            foreach (var target in root.Elements(ns + "Target"))
-            {
-                project.Add(new XComment(" ⚠ Review this custom Target for SDK compatibility "));
-                project.Add(CloneElementWithoutNamespace(target));
-            }
-
+            // Save atomically
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), project);
-
-            try
+            var tempPath = filePath + ".tmp";
+            var settings = new XmlWriterSettings
             {
-                var settings = new XmlWriterSettings
-                {
-                    Encoding = encoding ?? System.Text.Encoding.UTF8,
-                    Indent = true,
-                    IndentChars = "  ",
-                    OmitXmlDeclaration = false
-                };
+                Encoding = encoding ?? Encoding.UTF8,
+                Indent = true,
+                IndentChars = "  ",
+                OmitXmlDeclaration = false
+            };
 
-                using (var writer = XmlWriter.Create(filePath, settings))
-                {
-                    newDoc.Save(writer);
-                }
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
-            }
+            using (var writer = XmlWriter.Create(tempPath, settings))
+                newDoc.Save(writer);
+
+            File.Replace(tempPath, filePath, backupPath, ignoreMetadataErrors: true);
 
             RunValidateProjectFile(filePath);
 
             return mappedTfm;
         });
     }
+
 
     private bool DetectWinFormsProject(XElement root, XNamespace ns)
     {
@@ -2271,49 +2138,31 @@ public partial class MainForm : Form
         return trimmed;
     }
 
-    private string MapLegacyFrameworkToModernTfm(string oldTfm)
+    private string MapLegacyFrameworkToModernTfm(string oldTfm, bool isDesktop)
     {
         if (string.IsNullOrWhiteSpace(oldTfm))
+            return isDesktop ? "net48-windows" : "net48";
+
+        var tfm = oldTfm.Trim().ToLowerInvariant();
+
+        // Handle old-style values like "v4.7.2"
+        if (tfm.StartsWith("v"))
         {
-            return "net48";
+            var version = tfm.Substring(1).Replace(".", "");
+            var mapped = "net" + version;
+            if (isDesktop && !mapped.EndsWith("-windows"))
+                mapped += "-windows";
+            return mapped;
         }
 
-        var tokens = oldTfm.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                           .Select(t => t.Trim())
-                           .Where(t => !string.IsNullOrEmpty(t))
-                           .ToList();
+        // Already SDK-like
+        if (tfm.StartsWith("net"))
+            return tfm;
 
-        if (tokens.Count == 0)
-        {
-            return "net48";
-        }
-
-        var primary = tokens[0];
-
-        if (primary.StartsWith("$"))
-        {
-            return "net48";
-        }
-
-        if (primary.StartsWith("net", StringComparison.OrdinalIgnoreCase))
-        {
-            return primary;
-        }
-
-        if (primary.StartsWith("v", StringComparison.OrdinalIgnoreCase))
-        {
-            var versionPart = primary.Substring(1);
-            var digits = versionPart.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-            var normalized = string.Concat(digits);
-
-            if (Regex.IsMatch(normalized, @"^\d+$"))
-            {
-                return "net" + normalized;
-            }
-        }
-
-        return "net48";
+        // Fallback
+        return isDesktop ? "net48-windows" : "net48";
     }
+
 
     private void AddPropertyIfExists(XElement propertyGroup, XElement root, XNamespace ns, string propertyName)
     {
