@@ -2261,11 +2261,11 @@ public partial class MainForm : Form
                 case XElement childElement:
                     clone.Add(CloneElementWithoutNamespace(childElement));
                     break;
-                case XText text:
-                    clone.Add(new XText(text.Value));
-                    break;
                 case XCData cdata:
                     clone.Add(new XCData(cdata.Value));
+                    break;
+                case XText text:
+                    clone.Add(new XText(text.Value));
                     break;
                 case XComment comment:
                     clone.Add(new XComment(comment.Value));
@@ -2306,11 +2306,11 @@ public partial class MainForm : Form
                 case XElement childElement:
                     clone.Add(CloneElementWithNamespace(childElement, targetNamespace));
                     break;
-                case XText text:
-                    clone.Add(new XText(text.Value));
-                    break;
                 case XCData cdata:
                     clone.Add(new XCData(cdata.Value));
+                    break;
+                case XText text:
+                    clone.Add(new XText(text.Value));
                     break;
                 case XComment comment:
                     clone.Add(new XComment(comment.Value));
