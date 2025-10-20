@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker", "CsprojChec
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker.Tests", "CsprojChecker.Tests\CsprojChecker.Tests.csproj", "{F4AB659C-29A8-4762-889F-1364949B643E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker.Core", "CsprojChecker.Core\CsprojChecker.Core.csproj", "{C562F331-A270-4798-A28A-C8C6EAD86240}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{F4AB659C-29A8-4762-889F-1364949B643E}.Release|x64.Build.0 = Release|Any CPU
 		{F4AB659C-29A8-4762-889F-1364949B643E}.Release|x86.ActiveCfg = Release|Any CPU
 		{F4AB659C-29A8-4762-889F-1364949B643E}.Release|x86.Build.0 = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|x64.Build.0 = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Debug|x86.Build.0 = Debug|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|x64.ActiveCfg = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|x64.Build.0 = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|x86.ActiveCfg = Release|Any CPU
+		{C562F331-A270-4798-A28A-C8C6EAD86240}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

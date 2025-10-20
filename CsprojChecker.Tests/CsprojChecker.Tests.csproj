@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CsprojChecker.Core\CsprojChecker.Core.csproj" />
+  </ItemGroup>
+
 </Project>
