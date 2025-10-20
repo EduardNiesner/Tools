@@ -2533,8 +2533,8 @@ public partial class MainForm : Form
         return node switch
         {
             XElement childElement => CloneElementWithoutNamespace(childElement),
-            XText text => new XText(text.Value),
             XCData cdata => new XCData(cdata.Value),
+            XText text => new XText(text.Value),
             XComment comment => new XComment(comment.Value),
             _ => null
         };
