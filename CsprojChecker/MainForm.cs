@@ -1,6 +1,15 @@
-using System.Xml.Linq;
-using System.Xml;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Drawing;
+using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace CsprojChecker;
 
@@ -30,8 +39,10 @@ public partial class MainForm : Form
     private Button appendTargetFrameworkButton = null!;
 
     // Project style conversion controls
-    private Button convertToSdkButton = null!;
+    private Button ConvertToSdkRoundTripButton = null!;
+    private Button ConvertToSdkOneWayButton = null!;
     private Button convertToOldStyleButton = null!;
+    private ToolTip toolTip = null!;
 
     // For cancellation support
     private CancellationTokenSource? _cancellationTokenSource;
@@ -79,6 +90,7 @@ public partial class MainForm : Form
     private void InitializeComponent()
     {
         this.SuspendLayout();
+        toolTip = new ToolTip();
 
         // Form settings
         this.Text = "Csproj Checker";
@@ -378,32 +390,50 @@ public partial class MainForm : Form
             TabIndex = 7
         };
 
-        // Convert to SDK-style button
-        convertToSdkButton = new Button
+        // Convert to SDK-style (round-trip) button
+        ConvertToSdkRoundTripButton = new Button
         {
             Location = new Point(10, 30),
             Size = new Size(340, 27),
-            Text = "Convert Old-style → SDK",
-            Name = "convertToSdkButton",
+            Text = "Convert Old-style → SDK (round-trip)",
+            Name = "convertToSdkRoundTripButton",
             Enabled = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             TabIndex = 0
         };
-        convertToSdkButton.Click += ConvertToSdkButton_Click;
-        convertToSdkButton.AccessibleName = "Convert to SDK Style";
-        convertToSdkButton.AccessibleDescription = "Convert selected old-style projects to SDK-style format";
-        projectStyleGroupBox.Controls.Add(convertToSdkButton);
+        ConvertToSdkRoundTripButton.Click += ConvertToSdkRoundTripButton_Click;
+        ConvertToSdkRoundTripButton.AccessibleName = "Convert to SDK Style (Round-trip)";
+        ConvertToSdkRoundTripButton.AccessibleDescription = "Convert selected old-style projects to SDK-style format with round-trip compatibility";
+        toolTip.SetToolTip(ConvertToSdkRoundTripButton, "Converts to SDK format while keeping compatibility for converting back to old-style later.");
+        projectStyleGroupBox.Controls.Add(ConvertToSdkRoundTripButton);
+
+        // Convert to SDK-style (one-way modern) button
+        ConvertToSdkOneWayButton = new Button
+        {
+            Location = new Point(10, 65),
+            Size = new Size(340, 27),
+            Text = "Convert Old-style → SDK (one-way modern)",
+            Name = "convertToSdkOneWayButton",
+            Enabled = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            TabIndex = 1
+        };
+        ConvertToSdkOneWayButton.Click += ConvertToSdkOneWayButton_Click;
+        ConvertToSdkOneWayButton.AccessibleName = "Convert to Modern SDK Style";
+        ConvertToSdkOneWayButton.AccessibleDescription = "Convert selected old-style projects to modern SDK-style format";
+        toolTip.SetToolTip(ConvertToSdkOneWayButton, "Creates a clean modern SDK project. Not intended to be converted back.");
+        projectStyleGroupBox.Controls.Add(ConvertToSdkOneWayButton);
 
         // Convert to Old-style button
         convertToOldStyleButton = new Button
         {
-            Location = new Point(10, 70),
+            Location = new Point(10, 100),
             Size = new Size(340, 27),
             Text = "Convert SDK → Old-style",
             Name = "convertToOldStyleButton",
             Enabled = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            TabIndex = 1
+            TabIndex = 2
         };
         convertToOldStyleButton.Click += ConvertToOldStyleButton_Click;
         convertToOldStyleButton.AccessibleName = "Convert to Old Style";
@@ -990,7 +1020,7 @@ public partial class MainForm : Form
         UpdateFrameworkOperationsState();
     }
 
-    private async void ConvertToSdkButton_Click(object? sender, EventArgs e)
+    private async void ConvertToSdkRoundTripButton_Click(object? sender, EventArgs e)
     {
         // Get selected Old-style projects
         var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
@@ -1037,7 +1067,7 @@ public partial class MainForm : Form
             try
             {
                 // Convert the project file
-                var newTfms = await ConvertOldStyleToSdkAsync(filePath, currentTfms);
+                var newTfms = await ConvertOldStyleToSdkRoundTripAsync(filePath, currentTfms);
 
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["Style"].Value = "SDK";
@@ -1086,6 +1116,98 @@ public partial class MainForm : Form
             MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
 
         // Refresh selection state
+        UpdateFrameworkOperationsState();
+    }
+
+    private async void ConvertToSdkOneWayButton_Click(object? sender, EventArgs e)
+    {
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var style = row.Cells["Style"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+
+            if (style == "Old-style")
+            {
+                selectedProjects.Add((row.Index, filePath, currentTfms));
+            }
+        }
+
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+
+        var confirmMessage = $"Convert {selectedProjects.Count} old-style project(s) to modern SDK format?\n" +
+                             "This will simplify the project, enable modern language features, and drop legacy imports.\n" +
+                             "A .bak backup will be created before conversion.\n" +
+                             "This conversion is NOT reversible.";
+
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Modern Conversion",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+
+        foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
+        {
+            try
+            {
+                var newTfm = await ConvertOldStyleToSdkOneWayAsync(filePath, currentTfms);
+
+                projectsGridView.Rows[rowIndex].Cells["Style"].Value = "SDK";
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfm;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.Style = "SDK";
+                    project.TargetFrameworks = newTfm;
+                    project.Changed = "✓";
+                }
+
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfm}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+
+        projectsGridView.Refresh();
+
+        var summaryMessage = $"Modern SDK conversion completed.\n\n" +
+                             $"Successful: {successCount}\n" +
+                             $"Errors: {errorCount}\n\n" +
+                             string.Join("\n", results.Take(10));
+
+        if (results.Count > 10)
+        {
+            summaryMessage += $"\n\n... and {results.Count - 10} more";
+        }
+
+        MessageBox.Show(summaryMessage, "Modern SDK Conversion",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+
         UpdateFrameworkOperationsState();
     }
 
@@ -1252,7 +1374,8 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Text = "";
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
-            convertToSdkButton.Enabled = false;
+            ConvertToSdkRoundTripButton.Enabled = false;
+            ConvertToSdkOneWayButton.Enabled = false;
             convertToOldStyleButton.Enabled = false;
             return;
         }
@@ -1289,7 +1412,8 @@ public partial class MainForm : Form
             targetFrameworkComboBox.Text = "";
             appendTargetFrameworkButton.Enabled = false;
             appendTargetFrameworkComboBox.Enabled = false;
-            convertToSdkButton.Enabled = false;
+            ConvertToSdkRoundTripButton.Enabled = false;
+            ConvertToSdkOneWayButton.Enabled = false;
             convertToOldStyleButton.Enabled = false;
             return;
         }
@@ -1339,11 +1463,13 @@ public partial class MainForm : Form
         // Enable Convert to SDK button only if all selected rows are Old-style
         if (allOldStyle)
         {
-            convertToSdkButton.Enabled = true;
+            ConvertToSdkRoundTripButton.Enabled = true;
+            ConvertToSdkOneWayButton.Enabled = true;
         }
         else
         {
-            convertToSdkButton.Enabled = false;
+            ConvertToSdkRoundTripButton.Enabled = false;
+            ConvertToSdkOneWayButton.Enabled = false;
         }
 
         // Enable Convert to Old-style button only if all selected rows are SDK-style
@@ -1693,7 +1819,7 @@ public partial class MainForm : Form
         return normalizedSet;
     }
 
-    private async Task<string> ConvertOldStyleToSdkAsync(string filePath, string oldTfm)
+    private async Task<string> ConvertOldStyleToSdkRoundTripAsync(string filePath, string oldTfm)
     {
         return await Task.Run(() =>
         {
@@ -1828,6 +1954,235 @@ public partial class MainForm : Form
         });
     }
 
+    private async Task<string> ConvertOldStyleToSdkOneWayAsync(string filePath, string oldTfm)
+    {
+        return await Task.Run(() =>
+        {
+            if (File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.IsReadOnly)
+                {
+                    throw new InvalidOperationException($"File is read-only: {filePath}");
+                }
+            }
+
+            XDocument doc;
+            System.Text.Encoding? encoding = null;
+
+            try
+            {
+                using (var reader = new StreamReader(filePath, true))
+                {
+                    reader.Peek();
+                    encoding = reader.CurrentEncoding;
+                }
+
+                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
+            }
+
+            var root = doc.Root ?? throw new InvalidOperationException("Invalid project file");
+
+            if (root.Attribute("Sdk") != null)
+            {
+                return ParseTargetFrameworks(root);
+            }
+
+            var backupPath = filePath + ".bak";
+
+            try
+            {
+                File.Copy(filePath, backupPath, overwrite: true);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"Failed to create backup: {ex.Message}");
+            }
+
+            XNamespace ns = root.GetDefaultNamespace();
+
+            bool isWinForms = DetectWinFormsProject(root, ns);
+            bool isWpf = DetectWpfProject(root, ns);
+
+            var mappedTfm = MapLegacyFrameworkToModernTfm(oldTfm);
+
+            if ((isWinForms || isWpf) && !mappedTfm.Contains("-windows", StringComparison.OrdinalIgnoreCase))
+            {
+                mappedTfm += "-windows";
+            }
+
+            var sdkValue = (isWinForms || isWpf)
+                ? "Microsoft.NET.Sdk.WindowsDesktop"
+                : "Microsoft.NET.Sdk";
+
+            var project = new XElement("Project", new XAttribute("Sdk", sdkValue));
+
+            var propertyGroup = new XElement("PropertyGroup");
+            propertyGroup.Add(new XElement("TargetFramework", mappedTfm));
+            propertyGroup.Add(new XElement("Nullable", "enable"));
+            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
+            propertyGroup.Add(new XElement("LangVersion", "latest"));
+
+            AddPropertyIfExists(propertyGroup, root, ns, "OutputType");
+            AddPropertyIfExists(propertyGroup, root, ns, "RootNamespace");
+            AddPropertyIfExists(propertyGroup, root, ns, "AssemblyName");
+            AddPropertyIfExists(propertyGroup, root, ns, "StartupObject");
+            AddPropertyIfExists(propertyGroup, root, ns, "ApplicationIcon");
+            AddPropertyIfExists(propertyGroup, root, ns, "SignAssembly");
+            AddPropertyIfExists(propertyGroup, root, ns, "AssemblyOriginatorKeyFile");
+            AddPropertyIfExists(propertyGroup, root, ns, "DelaySign");
+            AddPropertyIfExists(propertyGroup, root, ns, "NeutralLanguage");
+
+            if (isWinForms)
+            {
+                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
+            }
+
+            if (isWpf)
+            {
+                propertyGroup.Add(new XElement("UseWPF", "true"));
+            }
+
+            project.Add(propertyGroup);
+
+            var customImports = CollectCustomImports(root, ns);
+
+            foreach (var import in customImports)
+            {
+                project.Add(import);
+            }
+
+            foreach (var propertyGroupElement in root.Elements(ns + "PropertyGroup")
+                                                    .Where(pg => pg.Attribute("Condition") != null))
+            {
+                var sanitized = SanitizePropertyGroup(propertyGroupElement);
+                if (sanitized != null)
+                {
+                    project.Add(sanitized);
+                }
+            }
+
+            var packageReferences = new List<XElement>();
+            var generalItemGroups = new List<XElement>();
+            bool hasExplicitDefaultItems = false;
+
+            foreach (var itemGroup in root.Elements(ns + "ItemGroup"))
+            {
+                var newGroup = new XElement("ItemGroup");
+                bool groupHasElements = false;
+
+                foreach (var attribute in itemGroup.Attributes())
+                {
+                    if (!attribute.IsNamespaceDeclaration)
+                    {
+                        newGroup.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
+                    }
+                }
+
+                foreach (var item in itemGroup.Elements())
+                {
+                    var localName = item.Name.LocalName;
+
+                    if (localName is "Compile" or "None" or "Content" or "EmbeddedResource")
+                    {
+                        if (ShouldKeepDefaultItem(item))
+                        {
+                            hasExplicitDefaultItems = true;
+                            newGroup.Add(CloneElementWithoutNamespace(item));
+                            groupHasElements = true;
+                        }
+
+                        continue;
+                    }
+
+                    if (localName == "Reference")
+                    {
+                        if (TryCreatePackageReference(item, ns, out var packageReference))
+                        {
+                            packageReferences.Add(packageReference);
+                            continue;
+                        }
+
+                        newGroup.Add(CloneElementWithoutNamespace(item));
+                        groupHasElements = true;
+                        continue;
+                    }
+
+                    if (localName == "PackageReference")
+                    {
+                        packageReferences.Add(CloneElementWithoutNamespace(item));
+                        continue;
+                    }
+
+                    newGroup.Add(CloneElementWithoutNamespace(item));
+                    groupHasElements = true;
+                }
+
+                if (groupHasElements)
+                {
+                    generalItemGroups.Add(newGroup);
+                }
+            }
+
+            if (packageReferences.Count > 0)
+            {
+                var packageGroup = new XElement("ItemGroup");
+                foreach (var packageReference in packageReferences)
+                {
+                    packageGroup.Add(packageReference);
+                }
+
+                generalItemGroups.Insert(0, packageGroup);
+            }
+
+            if (hasExplicitDefaultItems)
+            {
+                propertyGroup.Add(new XElement("EnableDefaultItems", "false"));
+            }
+
+            foreach (var group in generalItemGroups)
+            {
+                project.Add(group);
+            }
+
+            foreach (var target in root.Elements(ns + "Target"))
+            {
+                project.Add(new XComment(" ⚠ Review this custom Target for SDK compatibility "));
+                project.Add(CloneElementWithoutNamespace(target));
+            }
+
+            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), project);
+
+            try
+            {
+                var settings = new XmlWriterSettings
+                {
+                    Encoding = encoding ?? System.Text.Encoding.UTF8,
+                    Indent = true,
+                    IndentChars = "  ",
+                    OmitXmlDeclaration = false
+                };
+
+                using (var writer = XmlWriter.Create(filePath, settings))
+                {
+                    newDoc.Save(writer);
+                }
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
+            }
+
+            RunValidateProjectFile(filePath);
+
+            return mappedTfm;
+        });
+    }
+
     private bool DetectWinFormsProject(XElement root, XNamespace ns)
     {
         // Check for WinForms indicators
@@ -1854,6 +2209,35 @@ public partial class MainForm : Form
         bool hasFormFiles = compiles.Any(c => c.EndsWith(".Designer.cs"));
 
         return hasWinFormsRef || hasFormFiles;
+    }
+
+    private bool DetectWpfProject(XElement root, XNamespace ns)
+    {
+        var useWpf = root.Descendants(ns + "UseWPF").FirstOrDefault();
+        if (useWpf != null && useWpf.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var references = root.Descendants(ns + "Reference")
+                             .Select(r => r.Attribute("Include")?.Value ?? string.Empty)
+                             .ToList();
+
+        bool hasWpfReferences = references.Any(r =>
+            r.StartsWith("PresentationFramework", StringComparison.OrdinalIgnoreCase) ||
+            r.StartsWith("PresentationCore", StringComparison.OrdinalIgnoreCase) ||
+            r.StartsWith("WindowsBase", StringComparison.OrdinalIgnoreCase) ||
+            r.StartsWith("System.Xaml", StringComparison.OrdinalIgnoreCase));
+
+        if (hasWpfReferences)
+        {
+            return true;
+        }
+
+        bool hasWpfItems = root.Descendants(ns + "Page").Any() ||
+                            root.Descendants(ns + "ApplicationDefinition").Any();
+
+        return hasWpfItems;
     }
 
     private string ConvertFrameworkVersion(string oldTfm, bool isWinForms)
@@ -1885,6 +2269,334 @@ public partial class MainForm : Form
 
         // If it doesn't start with 'v', return as-is
         return trimmed;
+    }
+
+    private string MapLegacyFrameworkToModernTfm(string oldTfm)
+    {
+        if (string.IsNullOrWhiteSpace(oldTfm))
+        {
+            return "net48";
+        }
+
+        var tokens = oldTfm.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                           .Select(t => t.Trim())
+                           .Where(t => !string.IsNullOrEmpty(t))
+                           .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return "net48";
+        }
+
+        var primary = tokens[0];
+
+        if (primary.StartsWith("$"))
+        {
+            return "net48";
+        }
+
+        if (primary.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+        {
+            return primary;
+        }
+
+        if (primary.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            var versionPart = primary.Substring(1);
+            var digits = versionPart.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+            var normalized = string.Concat(digits);
+
+            if (Regex.IsMatch(normalized, @"^\d+$"))
+            {
+                return "net" + normalized;
+            }
+        }
+
+        return "net48";
+    }
+
+    private void AddPropertyIfExists(XElement propertyGroup, XElement root, XNamespace ns, string propertyName)
+    {
+        var element = root.Descendants(ns + propertyName).FirstOrDefault();
+        if (element != null && !string.IsNullOrWhiteSpace(element.Value))
+        {
+            propertyGroup.Add(new XElement(propertyName, element.Value));
+        }
+    }
+
+    private List<XElement> CollectCustomImports(XElement root, XNamespace ns)
+    {
+        var imports = new List<XElement>();
+
+        foreach (var import in root.Elements(ns + "Import"))
+        {
+            var projectValue = import.Attribute("Project")?.Value ?? string.Empty;
+            if (!IsDefaultImport(projectValue))
+            {
+                imports.Add(CloneElementWithoutNamespace(import));
+            }
+        }
+
+        foreach (var importGroup in root.Elements(ns + "ImportGroup"))
+        {
+            var newGroup = new XElement("ImportGroup");
+
+            foreach (var attribute in importGroup.Attributes())
+            {
+                if (!attribute.IsNamespaceDeclaration)
+                {
+                    newGroup.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
+                }
+            }
+
+            foreach (var import in importGroup.Elements(ns + "Import"))
+            {
+                var projectValue = import.Attribute("Project")?.Value ?? string.Empty;
+                if (!IsDefaultImport(projectValue))
+                {
+                    newGroup.Add(CloneElementWithoutNamespace(import));
+                }
+            }
+
+            if (newGroup.HasElements)
+            {
+                imports.Add(newGroup);
+            }
+        }
+
+        return imports;
+    }
+
+    private XElement? SanitizePropertyGroup(XElement propertyGroup)
+    {
+        var newGroup = new XElement("PropertyGroup");
+
+        foreach (var attribute in propertyGroup.Attributes())
+        {
+            if (!attribute.IsNamespaceDeclaration)
+            {
+                newGroup.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
+            }
+        }
+
+        foreach (var child in propertyGroup.Elements())
+        {
+            var propertyName = child.Name.LocalName;
+
+            if (ShouldSkipLegacyProperty(propertyName, child.Value))
+            {
+                continue;
+            }
+
+            if (propertyName == "OutputPath" && IsDefaultOutputPath(child.Value))
+            {
+                continue;
+            }
+
+            newGroup.Add(new XElement(propertyName, child.Value));
+        }
+
+        return newGroup.HasElements ? newGroup : null;
+    }
+
+    private bool ShouldSkipLegacyProperty(string propertyName, string propertyValue)
+    {
+        switch (propertyName)
+        {
+            case "ProjectGuid":
+            case "AppDesignerFolder":
+            case "FileAlignment":
+            case "SchemaVersion":
+            case "ProductVersion":
+            case "OldToolsVersion":
+            case "TargetFrameworkProfile":
+            case "TargetFrameworkVersion":
+            case "TargetFramework":
+            case "TargetFrameworks":
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsDefaultOutputPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var normalized = value.Replace('/', '\\').Trim();
+        normalized = normalized.TrimEnd('\\');
+
+        var defaults = new[]
+        {
+            "bin\\Debug",
+            "bin\\Release",
+            "bin\\$(Configuration)",
+            "bin\\$(Configuration)\\"
+        };
+
+        return defaults.Any(defaultValue =>
+            string.Equals(normalized, defaultValue.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool ShouldKeepDefaultItem(XElement item)
+    {
+        if (item.HasElements)
+        {
+            return true;
+        }
+
+        if (item.Attributes().Any(a => !string.Equals(a.Name.LocalName, "Include", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var includeValue = item.Attribute("Include")?.Value ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(includeValue))
+        {
+            return false;
+        }
+
+        if (includeValue.Contains("..") || includeValue.Contains(":") || includeValue.StartsWith("/", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryCreatePackageReference(XElement referenceElement, XNamespace ns, out XElement packageReference)
+    {
+        packageReference = null!;
+
+        var hintPath = referenceElement.Element(ns + "HintPath")?.Value ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(hintPath))
+        {
+            return false;
+        }
+
+        var segments = hintPath.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        var packagesIndex = Array.FindIndex(segments, segment =>
+            segment.Equals("packages", StringComparison.OrdinalIgnoreCase));
+
+        if (packagesIndex < 0 || packagesIndex + 1 >= segments.Length)
+        {
+            return false;
+        }
+
+        var idAndVersion = segments[packagesIndex + 1];
+        var match = Regex.Match(idAndVersion, "^(?<id>.+)\\.(?<version>\\d[\\w\\.\\-+]*)$");
+
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        var packageId = match.Groups["id"].Value;
+        var version = match.Groups["version"].Value;
+
+        packageReference = new XElement("PackageReference",
+            new XAttribute("Include", packageId),
+            new XAttribute("Version", version));
+
+        return true;
+    }
+
+    private XElement CloneElementWithoutNamespace(XElement element)
+    {
+        var clone = new XElement(element.Name.LocalName);
+
+        foreach (var attribute in element.Attributes())
+        {
+            if (!attribute.IsNamespaceDeclaration)
+            {
+                clone.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
+            }
+        }
+
+        foreach (var node in element.Nodes())
+        {
+            var clonedNode = CloneNodeWithoutNamespace(node);
+            if (clonedNode != null)
+            {
+                clone.Add(clonedNode);
+            }
+        }
+
+        return clone;
+    }
+
+    private XNode? CloneNodeWithoutNamespace(XNode node)
+    {
+        return node switch
+        {
+            XElement childElement => CloneElementWithoutNamespace(childElement),
+            XText text => new XText(text.Value),
+            XCData cdata => new XCData(cdata.Value),
+            XComment comment => new XComment(comment.Value),
+            _ => null
+        };
+    }
+
+    private bool IsDefaultImport(string projectValue)
+    {
+        if (string.IsNullOrWhiteSpace(projectValue))
+        {
+            return false;
+        }
+
+        var normalized = projectValue.Replace('/', '\\').ToLowerInvariant();
+
+        string[] defaultFragments =
+        {
+            "microsoft.common.props",
+            "microsoft.common.targets",
+            "microsoft.csharp.targets",
+            "microsoft.visualbasic.targets",
+            "microsoft.appx.targets",
+            "microsoft.winfx.targets",
+            "microsoft.windows.targets"
+        };
+
+        return defaultFragments.Any(fragment => normalized.Contains(fragment));
+    }
+
+    private void RunValidateProjectFile(string filePath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("dotnet", $"msbuild \"{filePath}\" /t:ValidateProjectFile")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(filePath) ?? Environment.CurrentDirectory
+            };
+
+            using var process = Process.Start(psi);
+
+            if (process == null)
+            {
+                Debug.WriteLine($"Failed to start dotnet msbuild for {filePath}");
+                return;
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                Debug.WriteLine($"ValidateProjectFile warnings for {filePath}:{Environment.NewLine}{output}{Environment.NewLine}{error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to validate project file {filePath}: {ex.Message}");
+        }
     }
 
     private (bool IsValid, string Reason) ValidateSdkToOldStyleConstraints(string filePath, string currentTfms)
