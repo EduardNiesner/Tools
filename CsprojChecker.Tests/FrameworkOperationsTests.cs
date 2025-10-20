@@ -181,6 +181,92 @@ public class FrameworkOperationsTests : IDisposable
         Assert.Equal("$(CustomFramework)", tfm.Value);
     }
 
+    [Fact]
+    public void ChangeTargetFramework_MultiplePropertyGroups_UpdatesAll()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "MultiPropertyGroup.csproj");
+        var content = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <PropertyGroup Condition=""'$(Configuration)'=='Debug'"">
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition=""'$(Configuration)'=='Release'"">
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>";
+        File.WriteAllText(projectPath, content);
+        
+        // Act
+        var result = ChangeTargetFramework(projectPath, "net8.0");
+        
+        // Assert
+        Assert.True(result.Success, $"Change failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        Assert.NotNull(root);
+        
+        // Check that ALL PropertyGroups with TargetFramework are updated
+        var allTfms = root.Descendants().Where(e => e.Name.LocalName == "TargetFramework").ToList();
+        Assert.NotEmpty(allTfms);
+        
+        foreach (var tfm in allTfms)
+        {
+            Assert.Equal("net8.0", tfm.Value);
+        }
+    }
+
+    [Fact]
+    public void ChangeTargetFramework_PreservesUnrelatedProperties()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "UnrelatedProps.csproj");
+        var content = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <CustomProperty>CustomValue</CustomProperty>
+  </PropertyGroup>
+</Project>";
+        File.WriteAllText(projectPath, content);
+        
+        // Act
+        var result = ChangeTargetFramework(projectPath, "net8.0");
+        
+        // Assert
+        Assert.True(result.Success, $"Change failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        Assert.NotNull(root);
+        
+        // Verify TFM was changed
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("net8.0", tfm.Value);
+        
+        // Verify unrelated properties are preserved
+        var nullable = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "Nullable");
+        Assert.NotNull(nullable);
+        Assert.Equal("enable", nullable.Value);
+        
+        var langVersion = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "LangVersion");
+        Assert.NotNull(langVersion);
+        Assert.Equal("latest", langVersion.Value);
+        
+        var customProp = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "CustomProperty");
+        Assert.NotNull(customProp);
+        Assert.Equal("CustomValue", customProp.Value);
+    }
+
     #endregion
 
     #region Append Target Framework Tests
@@ -267,8 +353,8 @@ public class FrameworkOperationsTests : IDisposable
 </Project>";
         File.WriteAllText(projectPath, content);
         
-        // Act
-        var result = AppendTargetFramework(projectPath, "net6.0");
+        // Act - Try to append net6.0 (case-insensitive match)
+        var result = AppendTargetFramework(projectPath, "NET6.0");
         
         // Assert
         Assert.True(result.Success, $"Append failed: {result.Error}");
@@ -280,11 +366,45 @@ public class FrameworkOperationsTests : IDisposable
         var tfms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFrameworks");
         Assert.NotNull(tfms);
         
-        // Should only have 2 frameworks, not 3
+        // Should deduplicate case-insensitively for literals
         var frameworks = tfms.Value.Split(';');
-        Assert.Equal(2, frameworks.Length);
-        Assert.Contains("net6.0", frameworks);
-        Assert.Contains("net7.0", frameworks);
+        Assert.Equal(2, frameworks.Length); // Still only 2 frameworks
+        Assert.Contains("net6.0", frameworks, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("net7.0", frameworks, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AppendTargetFramework_VariableDuplication_ExactMatchOnly()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "AppendVariableDup.csproj");
+        var content = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFrameworks>$(MyFramework);net6.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>";
+        File.WriteAllText(projectPath, content);
+        
+        // Act - Variables require exact match
+        var result = AppendTargetFramework(projectPath, "$(MyFramework)");
+        
+        // Assert
+        Assert.True(result.Success, $"Append failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        Assert.NotNull(root);
+        
+        var tfms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFrameworks");
+        Assert.NotNull(tfms);
+        
+        // Should deduplicate with exact match for variables
+        var frameworks = tfms.Value.Split(';');
+        Assert.Equal(2, frameworks.Length); // Still only 2 frameworks
+        Assert.Contains("$(MyFramework)", frameworks);
+        Assert.Contains("net6.0", frameworks, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -348,10 +468,13 @@ public class FrameworkOperationsTests : IDisposable
         var tfms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFrameworks");
         Assert.NotNull(tfms);
         
-        // Variables should come first, then literals sorted by version descending
+        // Variables should come first
         var frameworks = tfms.Value.Split(';');
+        Assert.Equal(2, frameworks.Length);
         Assert.Equal("$(CustomFramework)", frameworks[0]); // Variable first
         Assert.Equal("net6.0", frameworks[1]); // Then literal
+        
+        // Note: We don't require total ordering for literals, just variables-first
     }
 
     [Fact]
@@ -397,22 +520,29 @@ public class FrameworkOperationsTests : IDisposable
             
             XNamespace ns = root.GetDefaultNamespace();
             
-            // Find existing TFM property
-            var tfmElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
-            var tfmsElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
+            // Find ALL existing TFM properties in ALL PropertyGroups
+            var tfmElements = root.Descendants(ns + "TargetFramework").ToList();
+            var tfmsElements = root.Descendants(ns + "TargetFrameworks").ToList();
             
             // Determine if new framework is single or multiple
             bool isMultiple = newFramework.Contains(';');
             
             if (isMultiple)
             {
-                // Remove TargetFramework (singular) if exists
-                tfmElement?.Remove();
+                // Remove ALL TargetFramework (singular) elements
+                foreach (var tfmElement in tfmElements)
+                {
+                    tfmElement.Remove();
+                }
                 
                 // Update or add TargetFrameworks (plural)
-                if (tfmsElement != null)
+                if (tfmsElements.Any())
                 {
-                    tfmsElement.Value = newFramework;
+                    // Update ALL TargetFrameworks elements
+                    foreach (var tfmsElement in tfmsElements)
+                    {
+                        tfmsElement.Value = newFramework;
+                    }
                 }
                 else
                 {
@@ -425,13 +555,20 @@ public class FrameworkOperationsTests : IDisposable
             }
             else
             {
-                // Remove TargetFrameworks (plural) if exists
-                tfmsElement?.Remove();
+                // Remove ALL TargetFrameworks (plural) elements
+                foreach (var tfmsElement in tfmsElements)
+                {
+                    tfmsElement.Remove();
+                }
                 
                 // Update or add TargetFramework (singular)
-                if (tfmElement != null)
+                if (tfmElements.Any())
                 {
-                    tfmElement.Value = newFramework;
+                    // Update ALL TargetFramework elements
+                    foreach (var tfmElement in tfmElements)
+                    {
+                        tfmElement.Value = newFramework;
+                    }
                 }
                 else
                 {
