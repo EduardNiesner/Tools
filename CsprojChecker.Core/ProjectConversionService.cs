@@ -147,6 +147,34 @@ public class ProjectConversionService
 
             newRoot.Add(propertyGroup);
 
+            // Preserve PackageReferences
+            var packageRefs = root
+                .Descendants(ns + "PackageReference")
+                .Select(CloneElementWithoutNamespace)
+                .ToList();
+
+            if (packageRefs.Any())
+            {
+                var group = new XElement("ItemGroup");
+                foreach (var pkg in packageRefs)
+                    group.Add(pkg);
+                newRoot.Add(group);
+            }
+
+            // Preserve ProjectReferences
+            var projectRefs = root
+                .Descendants(ns + "ProjectReference")
+                .Select(CloneElementWithoutNamespace)
+                .ToList();
+
+            if (projectRefs.Any())
+            {
+                var group = new XElement("ItemGroup");
+                foreach (var projRef in projectRefs)
+                    group.Add(projRef);
+                newRoot.Add(group);
+            }
+
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
 
@@ -274,6 +302,20 @@ public class ProjectConversionService
                 var group = new XElement("ItemGroup");
                 foreach (var pkg in packageRefs)
                     group.Add(pkg);
+                project.Add(group);
+            }
+
+            // Preserve ProjectReferences
+            var projectRefs = root
+                .Descendants(ns + "ProjectReference")
+                .Select(CloneElementWithoutNamespace)
+                .ToList();
+
+            if (projectRefs.Any())
+            {
+                var group = new XElement("ItemGroup");
+                foreach (var projRef in projectRefs)
+                    group.Add(projRef);
                 project.Add(group);
             }
 

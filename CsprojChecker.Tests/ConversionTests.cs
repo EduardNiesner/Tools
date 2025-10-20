@@ -1067,6 +1067,68 @@ namespace ConsoleApp1
 
     #endregion
 
+    #region Test Case 12: ProjectReference Preservation
+
+    [Fact]
+    public void ModernConversion_PreservesProjectReferences()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "ProjectWithRefs.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\OtherProject\OtherProject.csproj"" />
+  </ItemGroup>
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success);
+        var doc = XDocument.Load(projectPath);
+        var projectRef = doc.Root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "ProjectReference");
+        Assert.NotNull(projectRef);
+        Assert.Equal("..\\OtherProject\\OtherProject.csproj", projectRef.Attribute("Include")?.Value);
+    }
+
+    [Fact]
+    public void RoundTripConversion_PreservesProjectReferences()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "ProjectWithRefsRoundTrip.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\OtherProject\OtherProject.csproj"" />
+  </ItemGroup>
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyle(projectPath);
+
+        // Assert
+        Assert.True(result.Success);
+        var doc = XDocument.Load(projectPath);
+        var projectRef = doc.Root.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "ProjectReference");
+        Assert.NotNull(projectRef);
+        Assert.Equal("..\\OtherProject\\OtherProject.csproj", projectRef.Attribute("Include")?.Value);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private ConversionResult ConvertOldStyleToSdkStyle(string projectPath)
