@@ -1,5 +1,7 @@
 using System.Xml.Linq;
 using Xunit;
+using CsprojChecker.Core;
+using CsprojChecker.Core.Models;
 
 namespace CsprojChecker.Tests;
 
@@ -9,11 +11,13 @@ namespace CsprojChecker.Tests;
 public class FrameworkOperationsTests : IDisposable
 {
     private readonly string _testDirectory;
+    private readonly ProjectConversionService _conversionService;
     
     public FrameworkOperationsTests()
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), "CsprojCheckerFrameworkTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testDirectory);
+        _conversionService = new ProjectConversionService();
     }
 
     public void Dispose()
@@ -510,216 +514,12 @@ public class FrameworkOperationsTests : IDisposable
 
     private OperationResult ChangeTargetFramework(string projectPath, string newFramework)
     {
-        try
-        {
-            var doc = XDocument.Load(projectPath);
-            var root = doc.Root;
-            
-            if (root == null)
-                return new OperationResult { Success = false, Error = "Invalid project file" };
-            
-            XNamespace ns = root.GetDefaultNamespace();
-            
-            // Find ALL existing TFM properties in ALL PropertyGroups
-            var tfmElements = root.Descendants(ns + "TargetFramework").ToList();
-            var tfmsElements = root.Descendants(ns + "TargetFrameworks").ToList();
-            
-            // Determine if new framework is single or multiple
-            bool isMultiple = newFramework.Contains(';');
-            
-            if (isMultiple)
-            {
-                // Remove ALL TargetFramework (singular) elements
-                foreach (var tfmElement in tfmElements)
-                {
-                    tfmElement.Remove();
-                }
-                
-                // Update or add TargetFrameworks (plural)
-                if (tfmsElements.Any())
-                {
-                    // Update ALL TargetFrameworks elements
-                    foreach (var tfmsElement in tfmsElements)
-                    {
-                        tfmsElement.Value = newFramework;
-                    }
-                }
-                else
-                {
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup != null)
-                    {
-                        propertyGroup.Add(new XElement(ns + "TargetFrameworks", newFramework));
-                    }
-                }
-            }
-            else
-            {
-                // Remove ALL TargetFrameworks (plural) elements
-                foreach (var tfmsElement in tfmsElements)
-                {
-                    tfmsElement.Remove();
-                }
-                
-                // Update or add TargetFramework (singular)
-                if (tfmElements.Any())
-                {
-                    // Update ALL TargetFramework elements
-                    foreach (var tfmElement in tfmElements)
-                    {
-                        tfmElement.Value = newFramework;
-                    }
-                }
-                else
-                {
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup != null)
-                    {
-                        propertyGroup.Add(new XElement(ns + "TargetFramework", newFramework));
-                    }
-                }
-            }
-            
-            doc.Save(projectPath);
-            return new OperationResult { Success = true };
-        }
-        catch (Exception ex)
-        {
-            return new OperationResult { Success = false, Error = ex.Message };
-        }
+        return _conversionService.ChangeTargetFramework(projectPath, newFramework);
     }
 
     private OperationResult AppendTargetFramework(string projectPath, string frameworkToAppend)
     {
-        try
-        {
-            var doc = XDocument.Load(projectPath);
-            var root = doc.Root;
-            
-            if (root == null)
-                return new OperationResult { Success = false, Error = "Invalid project file" };
-            
-            // Check if SDK-style
-            if (root.Attribute("Sdk") == null)
-                return new OperationResult { Success = false, Error = "Append only works with SDK-style projects" };
-            
-            XNamespace ns = root.GetDefaultNamespace();
-            
-            // Check if WinForms
-            var useWinForms = root.Descendants(ns + "UseWindowsForms").FirstOrDefault();
-            bool isWinForms = useWinForms != null && useWinForms.Value.Equals("true", StringComparison.OrdinalIgnoreCase);
-            
-            // Find existing TFM property
-            var tfmElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
-            var tfmsElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
-            
-            // Get current frameworks
-            List<string> currentFrameworks = new List<string>();
-            if (tfmsElement != null)
-            {
-                currentFrameworks = tfmsElement.Value.Split(';').ToList();
-            }
-            else if (tfmElement != null)
-            {
-                currentFrameworks.Add(tfmElement.Value);
-            }
-            
-            // Process framework to append
-            string processedFramework = frameworkToAppend;
-            
-            // Add -windows suffix for WinForms projects with net5.0+ literal frameworks
-            if (isWinForms && !processedFramework.StartsWith("$") && 
-                (processedFramework.StartsWith("net5") || processedFramework.StartsWith("net6") || 
-                 processedFramework.StartsWith("net7") || processedFramework.StartsWith("net8") || 
-                 processedFramework.StartsWith("net9")))
-            {
-                if (!processedFramework.EndsWith("-windows"))
-                {
-                    processedFramework += "-windows";
-                }
-            }
-            
-            // Add to list if not already present (case-insensitive for literals, exact for variables)
-            bool isDuplicate = false;
-            if (processedFramework.StartsWith("$"))
-            {
-                // Exact match for variables
-                isDuplicate = currentFrameworks.Contains(processedFramework);
-            }
-            else
-            {
-                // Case-insensitive match for literals
-                isDuplicate = currentFrameworks.Any(f => f.Equals(processedFramework, StringComparison.OrdinalIgnoreCase));
-            }
-            
-            if (!isDuplicate)
-            {
-                currentFrameworks.Add(processedFramework);
-            }
-            
-            // Sort: variables first, then literals by version descending
-            var sortedFrameworks = currentFrameworks
-                .OrderByDescending(f => f.StartsWith("$")) // Variables first
-                .ThenByDescending(f => f) // Then by name (which roughly sorts by version)
-                .ToList();
-            
-            // Update project
-            string newTfms = string.Join(";", sortedFrameworks);
-            
-            if (sortedFrameworks.Count > 1)
-            {
-                // Use TargetFrameworks (plural)
-                tfmElement?.Remove();
-                
-                if (tfmsElement != null)
-                {
-                    tfmsElement.Value = newTfms;
-                }
-                else
-                {
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup != null)
-                    {
-                        propertyGroup.Add(new XElement(ns + "TargetFrameworks", newTfms));
-                    }
-                }
-            }
-            else
-            {
-                // Use TargetFramework (singular)
-                tfmsElement?.Remove();
-                
-                if (tfmElement != null)
-                {
-                    tfmElement.Value = newTfms;
-                }
-                else
-                {
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup != null)
-                    {
-                        propertyGroup.Add(new XElement(ns + "TargetFramework", newTfms));
-                    }
-                }
-            }
-            
-            doc.Save(projectPath);
-            return new OperationResult { Success = true };
-        }
-        catch (Exception ex)
-        {
-            return new OperationResult { Success = false, Error = ex.Message };
-        }
-    }
-
-    #endregion
-
-    #region Helper Classes
-
-    private class OperationResult
-    {
-        public bool Success { get; set; }
-        public string Error { get; set; } = string.Empty;
+        return _conversionService.AppendTargetFramework(projectPath, frameworkToAppend);
     }
 
     #endregion

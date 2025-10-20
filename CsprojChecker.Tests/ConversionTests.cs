@@ -1,5 +1,7 @@
 using System.Xml.Linq;
 using Xunit;
+using CsprojChecker.Core;
+using CsprojChecker.Core.Models;
 
 namespace CsprojChecker.Tests;
 
@@ -10,11 +12,13 @@ namespace CsprojChecker.Tests;
 public class ConversionTests : IDisposable
 {
     private readonly string _testDirectory;
+    private readonly ProjectConversionService _conversionService;
     
     public ConversionTests()
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), "CsprojCheckerTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testDirectory);
+        _conversionService = new ProjectConversionService();
     }
 
     public void Dispose()
@@ -583,271 +587,12 @@ namespace ConsoleApp1
 
     private ConversionResult ConvertOldStyleToSdkStyle(string projectPath)
     {
-        try
-        {
-            // Since we can't directly call the WinForms app methods, we'll implement
-            // a simplified version of the conversion logic for testing purposes
-            var doc = XDocument.Load(projectPath);
-            var root = doc.Root;
-            
-            if (root == null)
-                return new ConversionResult { Success = false, Error = "Invalid project file" };
-            
-            // Check if already SDK-style
-            if (root.Attribute("Sdk") != null)
-                return new ConversionResult { Success = true };
-            
-            XNamespace ns = root.GetDefaultNamespace();
-            
-            // Get framework version
-            var tfmElement = root.Descendants(ns + "TargetFrameworkVersion").FirstOrDefault();
-            var oldTfm = tfmElement?.Value ?? "v4.8";
-            
-            // Detect WinForms
-            var references = root.Descendants(ns + "Reference")
-                .Select(r => r.Attribute("Include")?.Value ?? "")
-                .ToList();
-            bool isWinForms = references.Any(r => r.Contains("System.Windows.Forms") || r.Contains("System.Drawing"));
-            
-            // Convert framework version
-            string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
-            
-            // Build new SDK-style project
-            var newRoot = new XElement("Project");
-            newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
-            
-            var propertyGroup = new XElement("PropertyGroup");
-            propertyGroup.Add(new XElement("TargetFramework", newTfm));
-            propertyGroup.Add(new XElement("Nullable", "enable"));
-            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
-            propertyGroup.Add(new XElement("LangVersion", "latest"));
-            
-            // Preserve OutputType, RootNamespace, AssemblyName
-            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            if (outputType != null)
-                propertyGroup.Add(new XElement("OutputType", outputType.Value));
-            
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            if (rootNamespace != null)
-                propertyGroup.Add(new XElement("RootNamespace", rootNamespace.Value));
-            
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            if (assemblyName != null)
-                propertyGroup.Add(new XElement("AssemblyName", assemblyName.Value));
-            
-            if (isWinForms)
-                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-            
-            newRoot.Add(propertyGroup);
-            
-            // Save
-            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-            newDoc.Save(projectPath);
-            
-            return new ConversionResult { Success = true };
-        }
-        catch (Exception ex)
-        {
-            return new ConversionResult { Success = false, Error = ex.Message };
-        }
+        return _conversionService.ConvertOldStyleToSdkStyle(projectPath);
     }
 
     private ConversionResult ConvertSdkStyleToOldStyle(string projectPath)
     {
-        try
-        {
-            var doc = XDocument.Load(projectPath);
-            var root = doc.Root;
-            
-            if (root == null)
-                return new ConversionResult { Success = false, Error = "Invalid project file" };
-            
-            // Check if already Old-style
-            if (root.Attribute("Sdk") == null)
-                return new ConversionResult { Success = true };
-            
-            XNamespace ns = root.GetDefaultNamespace();
-            
-            // Check for blocking conditions
-            var packageRefs = root.Descendants(ns + "PackageReference").ToList();
-            if (packageRefs.Any())
-                return new ConversionResult { Success = false, Error = $"Has {packageRefs.Count} PackageReference(s)" };
-            
-            var tfmElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
-            var tfmsElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
-            
-            if (tfmsElement != null)
-                return new ConversionResult { Success = false, Error = "Multiple target frameworks" };
-            
-            var currentTfm = tfmElement?.Value ?? "";
-            
-            // Check if it's a .NET Framework target
-            if (!IsNetFrameworkTarget(currentTfm))
-                return new ConversionResult { Success = false, Error = "Not a .NET Framework target" };
-            
-            // Convert framework version
-            string newTfm = ConvertSdkToOldFrameworkVersion(currentTfm);
-            
-            // Detect WinForms
-            var useWinForms = root.Descendants(ns + "UseWindowsForms").FirstOrDefault();
-            bool isWinForms = useWinForms != null && useWinForms.Value.Equals("true", StringComparison.OrdinalIgnoreCase);
-            
-            // Build new Old-style project
-            XNamespace msbuildNs = "http://schemas.microsoft.com/developer/msbuild/2003";
-            var newRoot = new XElement(msbuildNs + "Project");
-            newRoot.Add(new XAttribute("ToolsVersion", "15.0"));
-            newRoot.Add(new XAttribute("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003"));
-            
-            // Import at beginning
-            var import1 = new XElement(msbuildNs + "Import");
-            import1.Add(new XAttribute("Project", @"$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"));
-            import1.Add(new XAttribute("Condition", @"Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"));
-            newRoot.Add(import1);
-            
-            // PropertyGroup with essential properties
-            var propertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            propertyGroup.Add(new XElement(msbuildNs + "Configuration", 
-                new XAttribute("Condition", " '$(Configuration)' == '' "), "Debug"));
-            propertyGroup.Add(new XElement(msbuildNs + "Platform", 
-                new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU"));
-            propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", "{" + Guid.NewGuid().ToString().ToUpper() + "}"));
-            
-            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            propertyGroup.Add(new XElement(msbuildNs + "OutputType", outputType?.Value ?? "Library"));
-            
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", 
-                rootNamespace?.Value ?? Path.GetFileNameWithoutExtension(projectPath)));
-            
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", 
-                assemblyName?.Value ?? Path.GetFileNameWithoutExtension(projectPath)));
-            
-            propertyGroup.Add(new XElement(msbuildNs + "TargetFrameworkVersion", newTfm));
-            propertyGroup.Add(new XElement(msbuildNs + "FileAlignment", "512"));
-            propertyGroup.Add(new XElement(msbuildNs + "Deterministic", "true"));
-            newRoot.Add(propertyGroup);
-            
-            // Debug PropertyGroup
-            var debugPG = new XElement(msbuildNs + "PropertyGroup");
-            debugPG.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "));
-            debugPG.Add(new XElement(msbuildNs + "DebugSymbols", "true"));
-            debugPG.Add(new XElement(msbuildNs + "DebugType", "full"));
-            debugPG.Add(new XElement(msbuildNs + "Optimize", "false"));
-            debugPG.Add(new XElement(msbuildNs + "OutputPath", @"bin\Debug\"));
-            debugPG.Add(new XElement(msbuildNs + "DefineConstants", "DEBUG;TRACE"));
-            debugPG.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            debugPG.Add(new XElement(msbuildNs + "WarningLevel", "4"));
-            newRoot.Add(debugPG);
-            
-            // Release PropertyGroup
-            var releasePG = new XElement(msbuildNs + "PropertyGroup");
-            releasePG.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "));
-            releasePG.Add(new XElement(msbuildNs + "DebugType", "pdbonly"));
-            releasePG.Add(new XElement(msbuildNs + "Optimize", "true"));
-            releasePG.Add(new XElement(msbuildNs + "OutputPath", @"bin\Release\"));
-            releasePG.Add(new XElement(msbuildNs + "DefineConstants", "TRACE"));
-            releasePG.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            releasePG.Add(new XElement(msbuildNs + "WarningLevel", "4"));
-            newRoot.Add(releasePG);
-            
-            // References
-            var refsGroup = new XElement(msbuildNs + "ItemGroup");
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Core")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml.Linq")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data.DataSetExtensions")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "Microsoft.CSharp")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data")));
-            refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml")));
-            
-            if (isWinForms)
-            {
-                refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Drawing")));
-                refsGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Windows.Forms")));
-            }
-            newRoot.Add(refsGroup);
-            
-            // Import at end
-            var import2 = new XElement(msbuildNs + "Import");
-            import2.Add(new XAttribute("Project", @"$(MSBuildToolsPath)\Microsoft.CSharp.targets"));
-            newRoot.Add(import2);
-            
-            // Save
-            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-            newDoc.Save(projectPath);
-            
-            return new ConversionResult { Success = true };
-        }
-        catch (Exception ex)
-        {
-            return new ConversionResult { Success = false, Error = ex.Message };
-        }
-    }
-
-    private string ConvertFrameworkVersion(string oldTfm, bool isWinForms)
-    {
-        // Handle variable tokens
-        if (oldTfm.StartsWith("$"))
-            return oldTfm;
-        
-        var trimmed = oldTfm.Trim();
-        
-        if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
-        {
-            var version = trimmed.Substring(1).Replace(".", "");
-            var newTfm = "net" + version;
-            
-            // For .NET Framework 4.x, DO NOT add -windows suffix
-            // Only net5.0+ should have -windows suffix for WinForms
-            // This is the realistic expectation per the issue
-            
-            return newTfm;
-        }
-        
-        return trimmed;
-    }
-
-    private string ConvertSdkToOldFrameworkVersion(string sdkTfm)
-    {
-        // Handle variable tokens
-        if (sdkTfm.StartsWith("$"))
-            return sdkTfm;
-        
-        var trimmed = sdkTfm.Trim().ToLowerInvariant();
-        
-        // Remove -windows suffix
-        trimmed = trimmed.Replace("-windows", "");
-        
-        if (trimmed.StartsWith("net") && trimmed.Length > 3)
-        {
-            var version = trimmed.Substring(3);
-            
-            // Add dots back for versions like 472 → 4.7.2
-            if (version.Length == 3)
-            {
-                return $"v{version[0]}.{version[1]}.{version[2]}";
-            }
-            else if (version.Length == 2)
-            {
-                return $"v{version[0]}.{version[1]}";
-            }
-            else
-            {
-                return $"v{version}";
-            }
-        }
-        
-        return trimmed;
-    }
-
-    private bool IsNetFrameworkTarget(string tfm)
-    {
-        if (tfm.StartsWith("$"))
-            return true; // Assume variables are valid
-        
-        var cleaned = tfm.Replace("-windows", "").ToLowerInvariant();
-        return cleaned.StartsWith("net4") || cleaned == "net403" || cleaned == "net40";
+        return _conversionService.ConvertSdkStyleToOldStyle(projectPath);
     }
 
     private BuildResult BuildProject(string projectPath, int timeoutSeconds = 120)
@@ -893,12 +638,6 @@ namespace ConsoleApp1
     #endregion
 
     #region Helper Classes
-
-    private class ConversionResult
-    {
-        public bool Success { get; set; }
-        public string Error { get; set; } = string.Empty;
-    }
 
     private class BuildResult
     {
