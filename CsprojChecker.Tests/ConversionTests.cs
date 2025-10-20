@@ -273,7 +273,7 @@ public class ConversionTests : IDisposable
 
     #endregion
 
-    #region Test Case 2d: Modern WinForms Conversion (Old-style net48 WinForms → Modern SDK with net8.0-windows)
+    #region Test Case 2d: Modern WinForms Conversion (Old-style net48 WinForms → Modern SDK, NO -windows for net4x)
 
     [Fact]
     public void TestCase2d_ModernWinFormsConversion_UsesWindowsDesktopSdkAndCorrectTfm()
@@ -318,10 +318,11 @@ public class ConversionTests : IDisposable
         Assert.NotNull(useWindowsForms);
         Assert.Equal("true", useWindowsForms.Value);
         
-        // Check that TFM is net48-windows (modern conversion maps old .NET Framework to modern with -windows suffix for desktop apps)
+        // Check that TFM is net48 (NO -windows suffix for .NET Framework 4.x, even in modern conversion)
         var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
         Assert.NotNull(tfm);
-        Assert.Equal("net48-windows", tfm.Value);
+        Assert.Equal("net48", tfm.Value);
+        Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
     }
 
     #endregion
@@ -522,6 +523,94 @@ public class ConversionTests : IDisposable
         // Check TFM - .NET Framework 4.x should NEVER have -windows suffix
         var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
         Assert.NotNull(tfm);
+        Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
+
+    #region Test Case 2i: Modern Conversion - Net4x Never Gets -windows Suffix for Desktop Projects
+
+    [Theory]
+    [InlineData("v4.8", "net48")]
+    [InlineData("v4.7.2", "net472")]
+    [InlineData("v4.6.2", "net462")]
+    public void TestCase2i_ModernConversionNet4xDesktop_NeverGetsWindowsSuffix(string oldVersion, string expectedTfm)
+    {
+        // Arrange - Old-style WinForms with .NET Framework 4.x
+        var projectPath = Path.Combine(_testDirectory, $"ModernWinForms_{oldVersion.Replace(".", "_")}.csproj");
+        var oldStyleContent = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworkVersion>{oldVersion}</TargetFrameworkVersion>
+    <RootNamespace>WinFormsApp1</RootNamespace>
+    <AssemblyName>WinFormsApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Windows.Forms"" />
+    <Reference Include=""System.Drawing"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use modern (one-way) conversion
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Modern conversion failed for {oldVersion}: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check TFM - .NET Framework 4.x should NEVER have -windows suffix, even in modern conversion
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal(expectedTfm, tfm.Value);
+        Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("v4.8", "net48")]
+    [InlineData("v4.7.2", "net472")]
+    public void TestCase2j_ModernConversionNet4xConsole_NeverGetsWindowsSuffix(string oldVersion, string expectedTfm)
+    {
+        // Arrange - Old-style console with .NET Framework 4.x
+        var projectPath = Path.Combine(_testDirectory, $"ModernConsole_{oldVersion.Replace(".", "_")}.csproj");
+        var oldStyleContent = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>{oldVersion}</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApp1</RootNamespace>
+    <AssemblyName>ConsoleApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use modern (one-way) conversion
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Modern conversion failed for {oldVersion}: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check TFM - .NET Framework 4.x should NEVER have -windows suffix
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal(expectedTfm, tfm.Value);
         Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
     }
 
