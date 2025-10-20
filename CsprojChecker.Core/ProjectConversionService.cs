@@ -924,7 +924,7 @@ public class ProjectConversionService
     private string MapLegacyFrameworkToModernTfm(string oldTfm, bool isDesktop)
     {
         if (string.IsNullOrWhiteSpace(oldTfm))
-            return isDesktop ? "net48-windows" : "net48";
+            return "net48"; // Fallback: no -windows for net4x
 
         var tfm = oldTfm.Trim();
 
@@ -941,8 +941,12 @@ public class ProjectConversionService
         {
             var version = tfmLower.Substring(1).Replace(".", "");
             var mapped = "net" + version;
-            if (isDesktop && !mapped.EndsWith("-windows"))
+            
+            // Only add -windows suffix for net5.0+ desktop TFMs, never for net4x
+            if (isDesktop && !mapped.EndsWith("-windows") && IsNet5OrLater(mapped))
+            {
                 mapped += "-windows";
+            }
             return mapped;
         }
 
@@ -950,8 +954,38 @@ public class ProjectConversionService
         if (tfmLower.StartsWith("net"))
             return tfm;
 
-        // Fallback
-        return isDesktop ? "net48-windows" : "net48";
+        // Fallback: no -windows for net4x
+        return "net48";
+    }
+
+    private bool IsNet5OrLater(string tfm)
+    {
+        var lower = tfm.ToLowerInvariant();
+        if (!lower.StartsWith("net"))
+            return false;
+
+        // Extract version part after "net"
+        var versionPart = lower.Substring(3);
+        
+        // Remove any suffix like -windows
+        var dashIndex = versionPart.IndexOf('-');
+        if (dashIndex > 0)
+            versionPart = versionPart.Substring(0, dashIndex);
+
+        // net5.0, net6.0, net7.0, net8.0, net9.0+ have single digit major version
+        // net4x have 2-3 digit versions: net40, net45, net451, net46, net461, net462, net47, net471, net472, net48, net481
+        if (versionPart.Length >= 1 && char.IsDigit(versionPart[0]))
+        {
+            var firstDigit = versionPart[0] - '0';
+            // net5.0+ starts with 5 or higher single digit
+            // net4x starts with 4 and has at least 2 digits
+            if (firstDigit >= 5)
+                return true;
+            if (firstDigit == 4 && versionPart.Length >= 2)
+                return false; // net4x
+        }
+
+        return false;
     }
 
     private void AddPropertyIfExists(XElement propertyGroup, XElement root, XNamespace ns, string propertyName)
