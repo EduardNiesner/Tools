@@ -19,6 +19,28 @@ dotnet build
 dotnet run --project CsprojChecker
 ```
 
+## Testing
+
+The project includes a comprehensive automated test suite that validates all conversion functionality.
+
+```bash
+# Run all tests
+dotnet test
+
+# Run tests with detailed output
+dotnet test --logger "console;verbosity=detailed"
+```
+
+### Test Coverage
+- **31 automated tests** covering:
+  - Old-style → SDK-style conversions (13 tests)
+  - SDK-style → Old-style conversions with blocking conditions (5 tests)
+  - Change Target Framework operations (6 tests)
+  - Append Target Framework operations (7 tests)
+  - Buildability validation
+
+See [CsprojChecker.Tests/TEST_RESULTS.md](CsprojChecker.Tests/TEST_RESULTS.md) for detailed test results and coverage information.
+
 ## Features
 
 ### Current (Step 8 - Polish and resilience)
