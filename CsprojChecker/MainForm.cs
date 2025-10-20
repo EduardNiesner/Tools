@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Xml.Linq;
 using System.Xml;
 using System.Text.Json;
@@ -1742,63 +1743,92 @@ public partial class MainForm : Form
 
             XNamespace ns = root.GetDefaultNamespace();
 
-            // Detect if it's a WinForms project
+            // Detect project characteristics
             bool isWinForms = DetectWinFormsProject(root, ns);
+            bool isWpf = DetectWpfProject(root, ns);
+            bool requiresWindowsDesktop = isWinForms || isWpf;
 
             // Convert framework version
-            string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
+            string newTfm = ConvertFrameworkVersion(oldTfm, requiresWindowsDesktop);
 
             // Create new SDK-style project
             var newRoot = new XElement("Project");
 
-            // Determine SDK attribute
-            if (isWinForms)
+            var sdkAttribute = requiresWindowsDesktop
+                ? "Microsoft.NET.Sdk.WindowsDesktop"
+                : "Microsoft.NET.Sdk";
+            newRoot.Add(new XAttribute("Sdk", sdkAttribute));
+
+            var newElements = new List<XElement>();
+            var propertyGroups = new List<XElement>();
+
+            foreach (var child in root.Elements())
             {
-                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
-            }
-            else
-            {
-                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
-            }
-
-            // Create PropertyGroup with essential properties
-            var propertyGroup = new XElement("PropertyGroup");
-
-            // Add TargetFramework
-            propertyGroup.Add(new XElement("TargetFramework", newTfm));
-
-            // Add OutputType if needed
-            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            if (outputType != null)
-            {
-                propertyGroup.Add(new XElement("OutputType", outputType.Value));
-            }
-
-            // Add WinForms specific properties if needed
-            if (isWinForms)
-            {
-                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-            }
-
-            // Add common properties
-            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
-            propertyGroup.Add(new XElement("Nullable", "enable"));
-
-            // Copy over RootNamespace if it exists
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            if (rootNamespace != null)
-            {
-                propertyGroup.Add(new XElement("RootNamespace", rootNamespace.Value));
-            }
-
-            // Copy over AssemblyName if it exists
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            if (assemblyName != null)
-            {
-                propertyGroup.Add(new XElement("AssemblyName", assemblyName.Value));
+                if (child.Name == ns + "PropertyGroup")
+                {
+                    var newGroup = ClonePropertyGroupWithoutTargets(child);
+                    if (newGroup != null)
+                    {
+                        newElements.Add(newGroup);
+                        propertyGroups.Add(newGroup);
+                    }
+                }
+                else if (child.Name == ns + "ItemGroup")
+                {
+                    var newGroup = CloneElementWithoutNamespace(child);
+                    if (newGroup.HasElements)
+                    {
+                        newElements.Add(newGroup);
+                    }
+                }
+                else if (child.Name == ns + "Import")
+                {
+                    // SDK-style projects do not generally require explicit imports for common props/targets
+                    continue;
+                }
+                else
+                {
+                    var clone = CloneElementWithoutNamespace(child);
+                    if (clone != null)
+                    {
+                        newElements.Add(clone);
+                    }
+                }
             }
 
-            newRoot.Add(propertyGroup);
+            // Ensure we have a PropertyGroup to host core properties
+            var globalPropertyGroup = propertyGroups.FirstOrDefault(pg => pg.Attribute("Condition") == null);
+            if (globalPropertyGroup == null)
+            {
+                globalPropertyGroup = new XElement("PropertyGroup");
+                newElements.Insert(0, globalPropertyGroup);
+                propertyGroups.Insert(0, globalPropertyGroup);
+            }
+
+            EnsureElementValue(globalPropertyGroup, "TargetFramework", newTfm);
+
+            if (requiresWindowsDesktop)
+            {
+                if (isWinForms && !globalPropertyGroup.Elements("UseWindowsForms").Any())
+                {
+                    globalPropertyGroup.Add(new XElement("UseWindowsForms", "true"));
+                }
+
+                if (isWpf && !globalPropertyGroup.Elements("UseWPF").Any())
+                {
+                    globalPropertyGroup.Add(new XElement("UseWPF", "true"));
+                }
+            }
+
+            // Copy OutputType, RootNamespace, AssemblyName if they were not preserved
+            EnsureElementCopied(root, ns, globalPropertyGroup, "OutputType");
+            EnsureElementCopied(root, ns, globalPropertyGroup, "RootNamespace");
+            EnsureElementCopied(root, ns, globalPropertyGroup, "AssemblyName");
+
+            foreach (var element in newElements)
+            {
+                newRoot.Add(element);
+            }
 
             // Create new document
             var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
@@ -1856,7 +1886,7 @@ public partial class MainForm : Form
         return hasWinFormsRef || hasFormFiles;
     }
 
-    private string ConvertFrameworkVersion(string oldTfm, bool isWinForms)
+    private string ConvertFrameworkVersion(string oldTfm, bool requiresWindowsDesktop)
     {
         // Handle variable tokens - preserve them verbatim
         if (oldTfm.StartsWith("$"))
@@ -1874,8 +1904,8 @@ public partial class MainForm : Form
             var version = trimmed.Substring(1).Replace(".", "");
             var newTfm = "net" + version;
 
-            // For .NET Framework 4.x versions on WinForms, add -windows suffix
-            if (isWinForms && version.StartsWith("4"))
+            // For .NET Framework 4.x versions that require Windows desktop assets, add -windows suffix
+            if (requiresWindowsDesktop && version.StartsWith("4"))
             {
                 newTfm += "-windows";
             }
@@ -2015,8 +2045,9 @@ public partial class MainForm : Form
             // Convert framework version from SDK-style to Old-style
             string newTfm = ConvertSdkToOldStyleFrameworkVersion(currentTfm);
 
-            // Detect if it's a WinForms project
+            // Detect desktop requirements
             bool isWinForms = IsWinFormsInSdkProject(root, ns);
+            bool isWpf = IsWpfInSdkProject(root, ns);
 
             // Create new Old-style project
             var newRoot = new XElement(msbuildNs + "Project");
@@ -2039,40 +2070,35 @@ public partial class MainForm : Form
             propertyGroup.Add(new XElement(msbuildNs + "Platform", new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU"));
 
             // Add ProjectGuid
-            propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", "{" + Guid.NewGuid().ToString().ToUpper() + "}"));
+            var existingGuid = root.Descendants(ns + "ProjectGuid").FirstOrDefault()?.Value;
+            var projectGuid = string.IsNullOrWhiteSpace(existingGuid)
+                ? CreateDeterministicProjectGuid(filePath)
+                : NormalizeProjectGuid(existingGuid);
+            propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", projectGuid));
 
             // Add OutputType
             var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            if (outputType != null)
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "OutputType", outputType.Value));
-            }
-            else
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "OutputType", "Library"));
-            }
+            propertyGroup.Add(new XElement(msbuildNs + "OutputType", outputType?.Value ?? "Library"));
 
             // Add RootNamespace
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            if (rootNamespace != null)
+            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault()?.Value;
+            if (!string.IsNullOrWhiteSpace(rootNamespace))
             {
-                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", rootNamespace.Value));
+                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", rootNamespace));
             }
             else
             {
-                // Use file name without extension
                 propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", Path.GetFileNameWithoutExtension(filePath)));
             }
 
             // Add AssemblyName
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            if (assemblyName != null)
+            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault()?.Value;
+            if (!string.IsNullOrWhiteSpace(assemblyName))
             {
-                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", assemblyName.Value));
+                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", assemblyName));
             }
             else
             {
-                // Use file name without extension
                 propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", Path.GetFileNameWithoutExtension(filePath)));
             }
 
@@ -2085,49 +2111,61 @@ public partial class MainForm : Form
             // Add Deterministic
             propertyGroup.Add(new XElement(msbuildNs + "Deterministic", "true"));
 
+            CopyGlobalPropertiesForOldStyle(root, ns, propertyGroup, msbuildNs);
+
             newRoot.Add(propertyGroup);
 
             // Add Debug PropertyGroup
-            var debugPropertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            debugPropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugSymbols", "true"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugType", "full"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "Optimize", "false"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Debug\"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "DEBUG;TRACE"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
+            var debugPropertyGroup = CreateDefaultConfigurationGroup(msbuildNs, "Debug|AnyCPU", isDebug: true);
+            MergeConfigurationProperties(root, ns, debugPropertyGroup, "Debug|AnyCPU", msbuildNs);
             newRoot.Add(debugPropertyGroup);
 
             // Add Release PropertyGroup
-            var releasePropertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            releasePropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "DebugType", "pdbonly"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "Optimize", "true"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Release\"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "TRACE"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
+            var releasePropertyGroup = CreateDefaultConfigurationGroup(msbuildNs, "Release|AnyCPU", isDebug: false);
+            MergeConfigurationProperties(root, ns, releasePropertyGroup, "Release|AnyCPU", msbuildNs);
             newRoot.Add(releasePropertyGroup);
 
-            // Add References ItemGroup
-            var referencesGroup = new XElement(msbuildNs + "ItemGroup");
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Core")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml.Linq")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data.DataSetExtensions")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "Microsoft.CSharp")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml")));
-
-            // Add WinForms references if needed
-            if (isWinForms)
+            // Copy other conditional property groups
+            foreach (var pg in root.Elements(ns + "PropertyGroup"))
             {
-                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Drawing")));
-                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Windows.Forms")));
+                var condition = pg.Attribute("Condition")?.Value;
+                if (string.IsNullOrWhiteSpace(condition))
+                {
+                    continue;
+                }
+
+                if (condition.Contains("Debug|AnyCPU", StringComparison.OrdinalIgnoreCase) ||
+                    condition.Contains("Release|AnyCPU", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var clone = CloneElementWithNamespace(pg, msbuildNs);
+                RemoveTargetFrameworkProperties(clone, msbuildNs);
+                if (clone.HasElements)
+                {
+                    newRoot.Add(clone);
+                }
             }
 
-            newRoot.Add(referencesGroup);
+            // Copy ItemGroups
+            foreach (var ig in root.Elements(ns + "ItemGroup"))
+            {
+                var clone = CloneItemGroupForOldStyle(ig, msbuildNs);
+                if (clone != null && clone.HasElements)
+                {
+                    newRoot.Add(clone);
+                }
+            }
+
+            EnsureDefaultReferenceItems(newRoot, msbuildNs, isWinForms, isWpf);
+            EnsureFileItems(newRoot, filePath, msbuildNs, "Compile", ".cs");
+            EnsureFileItems(newRoot, filePath, msbuildNs, "EmbeddedResource", ".resx");
+            EnsureFileItems(newRoot, filePath, msbuildNs, "None", ".config", ".settings");
+            if (isWpf)
+            {
+                EnsureWpfItems(newRoot, filePath, msbuildNs);
+            }
 
             // Import Microsoft.CSharp.targets at the end
             var importGroup2 = new XElement(msbuildNs + "Import");
@@ -2160,6 +2198,617 @@ public partial class MainForm : Form
 
             return newTfm;
         });
+    }
+
+    private XElement? ClonePropertyGroupWithoutTargets(XElement propertyGroup)
+    {
+        var newGroup = new XElement("PropertyGroup");
+
+        foreach (var attribute in propertyGroup.Attributes())
+        {
+            if (attribute.IsNamespaceDeclaration)
+            {
+                continue;
+            }
+
+            newGroup.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+        }
+
+        foreach (var child in propertyGroup.Elements())
+        {
+            if (IsTargetFrameworkElementName(child.Name.LocalName))
+            {
+                continue;
+            }
+
+            var clone = CloneElementWithoutNamespace(child);
+            if (clone != null)
+            {
+                newGroup.Add(clone);
+            }
+        }
+
+        if (!newGroup.HasElements && !newGroup.Attributes().Any())
+        {
+            return null;
+        }
+
+        return newGroup;
+    }
+
+    private XElement CloneElementWithoutNamespace(XElement element)
+    {
+        var clone = new XElement(element.Name.LocalName);
+
+        foreach (var attribute in element.Attributes())
+        {
+            if (attribute.IsNamespaceDeclaration)
+            {
+                continue;
+            }
+
+            clone.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+        }
+
+        foreach (var node in element.Nodes())
+        {
+            switch (node)
+            {
+                case XElement childElement:
+                    clone.Add(CloneElementWithoutNamespace(childElement));
+                    break;
+                case XText text:
+                    clone.Add(new XText(text.Value));
+                    break;
+                case XCData cdata:
+                    clone.Add(new XCData(cdata.Value));
+                    break;
+                case XComment comment:
+                    clone.Add(new XComment(comment.Value));
+                    break;
+                case XProcessingInstruction instruction:
+                    clone.Add(new XProcessingInstruction(instruction.Target, instruction.Data));
+                    break;
+                case XDocumentType:
+                    break;
+            }
+        }
+
+        return clone;
+    }
+
+    private XElement CloneElementWithNamespace(XElement element, XNamespace targetNamespace)
+    {
+        var clone = new XElement(targetNamespace + element.Name.LocalName);
+
+        foreach (var attribute in element.Attributes())
+        {
+            if (attribute.IsNamespaceDeclaration)
+            {
+                continue;
+            }
+
+            clone.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+        }
+
+        foreach (var node in element.Nodes())
+        {
+            switch (node)
+            {
+                case XElement childElement:
+                    clone.Add(CloneElementWithNamespace(childElement, targetNamespace));
+                    break;
+                case XText text:
+                    clone.Add(new XText(text.Value));
+                    break;
+                case XCData cdata:
+                    clone.Add(new XCData(cdata.Value));
+                    break;
+                case XComment comment:
+                    clone.Add(new XComment(comment.Value));
+                    break;
+                case XProcessingInstruction instruction:
+                    clone.Add(new XProcessingInstruction(instruction.Target, instruction.Data));
+                    break;
+                case XDocumentType:
+                    break;
+            }
+        }
+
+        return clone;
+    }
+
+    private bool IsTargetFrameworkElementName(string name)
+    {
+        return name.Equals("TargetFramework", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("TargetFrameworks", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("TargetFrameworkVersion", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsureElementValue(XElement parent, string elementName, string value)
+    {
+        var element = parent.Elements(elementName).FirstOrDefault();
+        if (element == null)
+        {
+            parent.AddFirst(new XElement(elementName, value));
+        }
+        else
+        {
+            element.Value = value;
+        }
+    }
+
+    private void EnsureElementCopied(XElement originalRoot, XNamespace originalNamespace, XElement targetGroup, string elementName)
+    {
+        if (targetGroup.Elements(elementName).Any())
+        {
+            return;
+        }
+
+        var sourceElement = originalRoot.Descendants(originalNamespace + elementName).FirstOrDefault();
+        if (sourceElement != null)
+        {
+            targetGroup.Add(new XElement(elementName, sourceElement.Value));
+        }
+    }
+
+    private bool DetectWpfProject(XElement root, XNamespace ns)
+    {
+        var useWpf = root.Descendants(ns + "UseWPF").FirstOrDefault();
+        if (useWpf != null && useWpf.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var projectTypeGuids = root.Descendants(ns + "ProjectTypeGuids").FirstOrDefault()?.Value ?? string.Empty;
+        if (projectTypeGuids.IndexOf("60DC8134-BAA2-11D1-AF9E-00A0C90F26F4", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        var references = root.Descendants(ns + "Reference")
+            .Select(r => r.Attribute("Include")?.Value ?? string.Empty)
+            .ToList();
+
+        if (references.Any(r => r.Contains("PresentationFramework", StringComparison.OrdinalIgnoreCase)
+            || r.Contains("PresentationCore", StringComparison.OrdinalIgnoreCase)
+            || r.Contains("WindowsBase", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var hasXamlPages = root.Descendants(ns + "Page").Any()
+            || root.Descendants(ns + "ApplicationDefinition").Any();
+
+        return hasXamlPages;
+    }
+
+    private bool IsWpfInSdkProject(XElement root, XNamespace ns)
+    {
+        var useWpf = root.Descendants(ns + "UseWPF").FirstOrDefault();
+        if (useWpf != null && useWpf.Value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (root.Descendants(ns + "Page").Any() || root.Descendants(ns + "ApplicationDefinition").Any())
+        {
+            return true;
+        }
+
+        var references = root.Descendants(ns + "Reference")
+            .Select(r => r.Attribute("Include")?.Value ?? string.Empty)
+            .ToList();
+
+        return references.Any(r => r.Contains("PresentationFramework", StringComparison.OrdinalIgnoreCase)
+            || r.Contains("PresentationCore", StringComparison.OrdinalIgnoreCase)
+            || r.Contains("WindowsBase", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string CreateDeterministicProjectGuid(string filePath)
+    {
+        var fullPath = Path.GetFullPath(filePath).ToLowerInvariant();
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(fullPath));
+        var guid = new Guid(hash);
+        return $"{{{guid.ToString().ToUpperInvariant()}}}";
+    }
+
+    private string NormalizeProjectGuid(string guidValue)
+    {
+        var trimmed = guidValue.Trim();
+
+        if (!trimmed.StartsWith("{", StringComparison.Ordinal))
+        {
+            trimmed = "{" + trimmed;
+        }
+
+        if (!trimmed.EndsWith("}", StringComparison.Ordinal))
+        {
+            trimmed += "}";
+        }
+
+        return trimmed.ToUpperInvariant();
+    }
+
+    private void CopyGlobalPropertiesForOldStyle(XElement sourceRoot, XNamespace sourceNs, XElement targetGroup, XNamespace targetNs)
+    {
+        var skipProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Configuration",
+            "Platform",
+            "ProjectGuid",
+            "OutputType",
+            "RootNamespace",
+            "AssemblyName",
+            "TargetFramework",
+            "TargetFrameworks",
+            "TargetFrameworkVersion",
+            "FileAlignment",
+            "Deterministic"
+        };
+
+        foreach (var propertyGroup in sourceRoot.Elements(sourceNs + "PropertyGroup"))
+        {
+            if (propertyGroup.Attribute("Condition") != null)
+            {
+                continue;
+            }
+
+            foreach (var element in propertyGroup.Elements())
+            {
+                var localName = element.Name.LocalName;
+                if (skipProperties.Contains(localName))
+                {
+                    continue;
+                }
+
+                var existing = targetGroup.Elements(targetNs + localName).FirstOrDefault()
+                    ?? targetGroup.Elements(localName).FirstOrDefault();
+                if (existing != null)
+                {
+                    continue;
+                }
+
+                var clone = CloneElementWithNamespace(element, targetNs);
+                if (clone != null)
+                {
+                    targetGroup.Add(clone);
+                }
+            }
+        }
+    }
+
+    private XElement CreateDefaultConfigurationGroup(XNamespace targetNs, string configuration, bool isDebug)
+    {
+        var group = new XElement(targetNs + "PropertyGroup");
+        group.Add(new XAttribute("Condition", $" '$(Configuration)|$(Platform)' == '{configuration}' "));
+
+        group.Add(new XElement(targetNs + "DebugSymbols", isDebug ? "true" : "false"));
+        group.Add(new XElement(targetNs + "DebugType", isDebug ? "full" : "pdbonly"));
+        group.Add(new XElement(targetNs + "Optimize", isDebug ? "false" : "true"));
+
+        var configName = configuration.Split('|')[0];
+        group.Add(new XElement(targetNs + "OutputPath", $"bin\\{configName}\\"));
+
+        group.Add(new XElement(targetNs + "DefineConstants", isDebug ? "DEBUG;TRACE" : "TRACE"));
+        group.Add(new XElement(targetNs + "ErrorReport", "prompt"));
+        group.Add(new XElement(targetNs + "WarningLevel", "4"));
+
+        return group;
+    }
+
+    private void MergeConfigurationProperties(XElement sourceRoot, XNamespace sourceNs, XElement targetGroup, string configurationKey, XNamespace targetNs)
+    {
+        foreach (var propertyGroup in sourceRoot.Elements(sourceNs + "PropertyGroup"))
+        {
+            var condition = propertyGroup.Attribute("Condition")?.Value;
+            if (string.IsNullOrWhiteSpace(condition) || !condition.Contains(configurationKey, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var element in propertyGroup.Elements())
+            {
+                var localName = element.Name.LocalName;
+                if (IsTargetFrameworkElementName(localName))
+                {
+                    continue;
+                }
+
+                var existing = targetGroup.Elements(targetNs + localName).FirstOrDefault();
+                if (existing != null)
+                {
+                    existing.Value = element.Value;
+                    continue;
+                }
+
+                var clone = CloneElementWithNamespace(element, targetNs);
+                if (clone != null)
+                {
+                    targetGroup.Add(clone);
+                }
+            }
+        }
+    }
+
+    private void RemoveTargetFrameworkProperties(XElement propertyGroup, XNamespace targetNs)
+    {
+        var targets = propertyGroup.Elements()
+            .Where(e => IsTargetFrameworkElementName(e.Name.LocalName))
+            .ToList();
+
+        foreach (var element in targets)
+        {
+            element.Remove();
+        }
+    }
+
+    private XElement? CloneItemGroupForOldStyle(XElement itemGroup, XNamespace targetNs)
+    {
+        var clone = new XElement(targetNs + "ItemGroup");
+
+        foreach (var attribute in itemGroup.Attributes())
+        {
+            if (attribute.IsNamespaceDeclaration)
+            {
+                continue;
+            }
+
+            clone.Add(new XAttribute(attribute.Name.LocalName, attribute.Value));
+        }
+
+        foreach (var element in itemGroup.Elements())
+        {
+            var localName = element.Name.LocalName;
+
+            if (localName.Equals("PackageReference", StringComparison.OrdinalIgnoreCase)
+                || localName.Equals("FrameworkReference", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var clonedElement = CloneElementWithNamespace(element, targetNs);
+            if (clonedElement != null)
+            {
+                clone.Add(clonedElement);
+            }
+        }
+
+        return clone.HasElements ? clone : null;
+    }
+
+    private void EnsureDefaultReferenceItems(XElement projectRoot, XNamespace targetNs, bool isWinForms, bool isWpf)
+    {
+        var existing = new HashSet<string>(projectRoot.Descendants(targetNs + "Reference")
+            .Select(r => r.Attribute("Include")?.Value ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+
+        var defaults = new List<string>
+        {
+            "System",
+            "System.Core",
+            "System.Xml.Linq",
+            "System.Data.DataSetExtensions",
+            "Microsoft.CSharp",
+            "System.Data",
+            "System.Xml"
+        };
+
+        if (isWinForms)
+        {
+            defaults.Add("System.Windows.Forms");
+            defaults.Add("System.Drawing");
+        }
+
+        if (isWpf)
+        {
+            defaults.Add("System.Xaml");
+            defaults.Add("PresentationFramework");
+            defaults.Add("PresentationCore");
+            defaults.Add("WindowsBase");
+        }
+
+        var missing = defaults
+            .Where(d => !string.IsNullOrWhiteSpace(d) && !existing.Contains(d))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        var itemGroup = new XElement(targetNs + "ItemGroup");
+        foreach (var reference in missing)
+        {
+            itemGroup.Add(new XElement(targetNs + "Reference", new XAttribute("Include", reference)));
+        }
+
+        projectRoot.Add(itemGroup);
+    }
+
+    private void EnsureFileItems(XElement projectRoot, string projectPath, XNamespace targetNs, string itemName, params string[] extensions)
+    {
+        if (extensions.Length == 0)
+        {
+            return;
+        }
+
+        var normalizedExtensions = new HashSet<string>(extensions.Select(ext =>
+            ext.StartsWith('.') ? ext : $".{ext}"), StringComparer.OrdinalIgnoreCase);
+
+        var existing = new HashSet<string>(projectRoot.Descendants(targetNs + itemName)
+            .Select(e =>
+            {
+                var includeValue = e.Attribute("Include")?.Value;
+                if (string.IsNullOrWhiteSpace(includeValue))
+                {
+                    includeValue = e.Attribute("Update")?.Value ?? string.Empty;
+                }
+
+                return NormalizePathForMsbuild(includeValue ?? string.Empty);
+            }), StringComparer.OrdinalIgnoreCase);
+
+        var projectDirectory = Path.GetDirectoryName(projectPath);
+        if (string.IsNullOrEmpty(projectDirectory) || !Directory.Exists(projectDirectory))
+        {
+            return;
+        }
+
+        var files = Directory.EnumerateFiles(projectDirectory, "*", SearchOption.AllDirectories)
+            .Where(path => normalizedExtensions.Contains(Path.GetExtension(path)))
+            .Where(path => !IsInIgnoredDirectory(projectDirectory, path));
+
+        var newItems = new List<XElement>();
+
+        foreach (var file in files)
+        {
+            if (itemName.Equals("Compile", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileName = Path.GetFileName(file);
+                if (fileName.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)
+                    || fileName.EndsWith(".g.i.cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+            }
+
+            var relative = Path.GetRelativePath(projectDirectory, file);
+            var normalized = NormalizePathForMsbuild(relative);
+
+            if (existing.Contains(normalized))
+            {
+                continue;
+            }
+
+            var element = new XElement(targetNs + itemName, new XAttribute("Include", normalized));
+            newItems.Add(element);
+        }
+
+        if (newItems.Count == 0)
+        {
+            return;
+        }
+
+        var itemGroup = new XElement(targetNs + "ItemGroup");
+        foreach (var element in newItems)
+        {
+            itemGroup.Add(element);
+        }
+
+        projectRoot.Add(itemGroup);
+    }
+
+    private void EnsureWpfItems(XElement projectRoot, string projectPath, XNamespace targetNs)
+    {
+        var projectDirectory = Path.GetDirectoryName(projectPath);
+        if (string.IsNullOrEmpty(projectDirectory) || !Directory.Exists(projectDirectory))
+        {
+            return;
+        }
+
+        var existingPages = new HashSet<string>(projectRoot.Descendants(targetNs + "Page")
+            .Select(e =>
+            {
+                var includeValue = e.Attribute("Include")?.Value;
+                if (string.IsNullOrWhiteSpace(includeValue))
+                {
+                    includeValue = e.Attribute("Update")?.Value ?? string.Empty;
+                }
+
+                return NormalizePathForMsbuild(includeValue ?? string.Empty);
+            }), StringComparer.OrdinalIgnoreCase);
+
+        var existingAppDefs = new HashSet<string>(projectRoot.Descendants(targetNs + "ApplicationDefinition")
+            .Select(e =>
+            {
+                var includeValue = e.Attribute("Include")?.Value;
+                if (string.IsNullOrWhiteSpace(includeValue))
+                {
+                    includeValue = e.Attribute("Update")?.Value ?? string.Empty;
+                }
+
+                return NormalizePathForMsbuild(includeValue ?? string.Empty);
+            }), StringComparer.OrdinalIgnoreCase);
+
+        var xamlFiles = Directory.EnumerateFiles(projectDirectory, "*.xaml", SearchOption.AllDirectories)
+            .Where(path => !IsInIgnoredDirectory(projectDirectory, path));
+
+        var pageGroup = new XElement(targetNs + "ItemGroup");
+        var appGroup = new XElement(targetNs + "ItemGroup");
+
+        foreach (var file in xamlFiles)
+        {
+            var relative = NormalizePathForMsbuild(Path.GetRelativePath(projectDirectory, file));
+
+            if (relative.EndsWith("App.xaml", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!existingAppDefs.Contains(relative))
+                {
+                    var appDefinition = new XElement(targetNs + "ApplicationDefinition", new XAttribute("Include", relative));
+                    appDefinition.Add(new XElement(targetNs + "Generator", "MSBuild:Compile"));
+                    appDefinition.Add(new XElement(targetNs + "SubType", "Designer"));
+                    appGroup.Add(appDefinition);
+                }
+            }
+            else
+            {
+                if (!existingPages.Contains(relative))
+                {
+                    var pageElement = new XElement(targetNs + "Page", new XAttribute("Include", relative));
+                    pageElement.Add(new XElement(targetNs + "Generator", "MSBuild:Compile"));
+                    pageElement.Add(new XElement(targetNs + "SubType", "Designer"));
+                    pageGroup.Add(pageElement);
+                }
+            }
+        }
+
+        if (appGroup.HasElements)
+        {
+            projectRoot.Add(appGroup);
+        }
+
+        if (pageGroup.HasElements)
+        {
+            projectRoot.Add(pageGroup);
+        }
+    }
+
+    private bool IsInIgnoredDirectory(string projectDirectory, string filePath)
+    {
+        var relative = Path.GetRelativePath(projectDirectory, filePath);
+        var segments = relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var segment in segments)
+        {
+            if (segment.Equals("bin", StringComparison.OrdinalIgnoreCase)
+                || segment.Equals("obj", StringComparison.OrdinalIgnoreCase)
+                || segment.Equals(".git", StringComparison.OrdinalIgnoreCase)
+                || segment.Equals(".vs", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string NormalizePathForMsbuild(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        var normalized = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        normalized = normalized.Replace(Path.DirectorySeparatorChar, '\\');
+
+        if (normalized.StartsWith(".\\", StringComparison.Ordinal))
+        {
+            normalized = normalized.Substring(2);
+        }
+
+        return normalized;
     }
 
     private bool IsWinFormsInSdkProject(XElement root, XNamespace ns)
