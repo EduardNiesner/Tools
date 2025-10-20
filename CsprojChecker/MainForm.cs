@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using System.Text;
+using CsprojChecker.Core;
+using CsprojChecker.Core.Models;
 
 namespace CsprojChecker;
 
@@ -53,6 +55,9 @@ public partial class MainForm : Form
 
     // Store all scanned projects for filtering
     private List<ProjectInfo> _allProjects = new List<ProjectInfo>();
+
+    // Core service for project conversions
+    private readonly ProjectConversionService _conversionService = new ProjectConversionService();
 
     // Settings file path
     private static readonly string SettingsDirectory = Path.Combine(
@@ -968,10 +973,15 @@ public partial class MainForm : Form
         {
             try
             {
-                var newTfms = AppendTfmValue(currentTfms, appendValue);
+                // Use Core API for append operation
+                var result = await Task.Run(() => _conversionService.AppendTargetFramework(filePath, appendValue));
+                
+                if (!result.Success)
+                {
+                    throw new InvalidOperationException(result.Error);
+                }
 
-                // Write to file
-                await WriteTfmToFileAsync(filePath, newTfms);
+                var newTfms = result.ResultingTargetFramework ?? currentTfms;
 
                 // Update grid
                 projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfms;
@@ -1655,124 +1665,10 @@ public partial class MainForm : Form
     {
         await Task.Run(() =>
         {
-            // Check if file is read-only
-            if (File.Exists(filePath))
+            var result = _conversionService.ChangeTargetFramework(filePath, newTfms);
+            if (!result.Success)
             {
-                var fileInfo = new FileInfo(filePath);
-                if (fileInfo.IsReadOnly)
-                {
-                    throw new InvalidOperationException($"File is read-only: {filePath}");
-                }
-            }
-
-            // Load document with encoding preservation
-            XDocument doc;
-            System.Text.Encoding? encoding = null;
-
-            try
-            {
-                // Detect encoding from file
-                using (var reader = new StreamReader(filePath, true))
-                {
-                    reader.Peek(); // Force encoding detection
-                    encoding = reader.CurrentEncoding;
-                }
-
-                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
-            }
-
-            var root = doc.Root;
-
-            if (root == null)
-            {
-                throw new InvalidOperationException("Invalid project file");
-            }
-
-            XNamespace ns = root.GetDefaultNamespace();
-
-            // Look for existing TargetFramework or TargetFrameworks element
-            var targetFrameworkElement = root.Descendants(ns + "TargetFramework").FirstOrDefault();
-            var targetFrameworksElement = root.Descendants(ns + "TargetFrameworks").FirstOrDefault();
-
-            // Determine if we need singular or plural based on the new value
-            bool isMultiple = newTfms.Contains(';');
-
-            if (isMultiple)
-            {
-                // We need TargetFrameworks (plural)
-                // Remove conflicting TargetFramework (singular) if it exists
-                if (targetFrameworkElement != null)
-                {
-                    targetFrameworkElement.Remove();
-                }
-
-                if (targetFrameworksElement != null)
-                {
-                    // Update existing TargetFrameworks
-                    targetFrameworksElement.Value = newTfms;
-                }
-                else
-                {
-                    // Create new TargetFrameworks element in the first PropertyGroup
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup == null)
-                    {
-                        propertyGroup = new XElement(ns + "PropertyGroup");
-                        root.Add(propertyGroup);
-                    }
-                    propertyGroup.Add(new XElement(ns + "TargetFrameworks", newTfms));
-                }
-            }
-            else
-            {
-                // Single framework
-                // Remove conflicting TargetFrameworks (plural) if it exists
-                if (targetFrameworksElement != null)
-                {
-                    targetFrameworksElement.Remove();
-                }
-
-                if (targetFrameworkElement != null)
-                {
-                    // Update existing TargetFramework
-                    targetFrameworkElement.Value = newTfms;
-                }
-                else
-                {
-                    // Create new TargetFramework element in the first PropertyGroup
-                    var propertyGroup = root.Descendants(ns + "PropertyGroup").FirstOrDefault();
-                    if (propertyGroup == null)
-                    {
-                        propertyGroup = new XElement(ns + "PropertyGroup");
-                        root.Add(propertyGroup);
-                    }
-                    propertyGroup.Add(new XElement(ns + "TargetFramework", newTfms));
-                }
-            }
-
-            // Save with original encoding
-            try
-            {
-                var settings = new XmlWriterSettings
-                {
-                    Encoding = encoding ?? System.Text.Encoding.UTF8,
-                    Indent = true,
-                    IndentChars = "  ",
-                    OmitXmlDeclaration = doc.Declaration == null
-                };
-
-                using (var writer = XmlWriter.Create(filePath, settings))
-                {
-                    doc.Save(writer);
-                }
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
+                throw new InvalidOperationException(result.Error);
             }
         });
     }
@@ -1824,134 +1720,14 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            // Check if file is read-only
-            if (File.Exists(filePath))
+            var result = _conversionService.ConvertOldStyleToSdkStyle(filePath);
+            
+            if (!result.Success)
             {
-                var fileInfo = new FileInfo(filePath);
-                if (fileInfo.IsReadOnly)
-                {
-                    throw new InvalidOperationException($"File is read-only: {filePath}");
-                }
+                throw new InvalidOperationException(result.Error);
             }
 
-            XDocument doc;
-            System.Text.Encoding? encoding = null;
-
-            try
-            {
-                // Detect encoding from file
-                using (var reader = new StreamReader(filePath, true))
-                {
-                    reader.Peek(); // Force encoding detection
-                    encoding = reader.CurrentEncoding;
-                }
-
-                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
-            }
-
-            var root = doc.Root;
-
-            if (root == null)
-            {
-                throw new InvalidOperationException("Invalid project file");
-            }
-
-            // Check if already SDK-style
-            if (root.Attribute("Sdk") != null)
-            {
-                // Already SDK-style, skip
-                return ParseTargetFrameworks(root);
-            }
-
-            XNamespace ns = root.GetDefaultNamespace();
-
-            // Detect if it's a WinForms project
-            bool isWinForms = DetectWinFormsProject(root, ns);
-
-            // Convert framework version
-            string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
-
-            // Create new SDK-style project
-            var newRoot = new XElement("Project");
-
-            // Determine SDK attribute
-            if (isWinForms)
-            {
-                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
-            }
-            else
-            {
-                newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
-            }
-
-            // Create PropertyGroup with essential properties
-            var propertyGroup = new XElement("PropertyGroup");
-
-            // Add TargetFramework
-            propertyGroup.Add(new XElement("TargetFramework", newTfm));
-
-            // Add OutputType if needed
-            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            if (outputType != null)
-            {
-                propertyGroup.Add(new XElement("OutputType", outputType.Value));
-            }
-
-            // Add WinForms specific properties if needed
-            if (isWinForms)
-            {
-                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-            }
-
-            // Add common properties
-            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
-            propertyGroup.Add(new XElement("Nullable", "enable"));
-
-            // Copy over RootNamespace if it exists
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            if (rootNamespace != null)
-            {
-                propertyGroup.Add(new XElement("RootNamespace", rootNamespace.Value));
-            }
-
-            // Copy over AssemblyName if it exists
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            if (assemblyName != null)
-            {
-                propertyGroup.Add(new XElement("AssemblyName", assemblyName.Value));
-            }
-
-            newRoot.Add(propertyGroup);
-
-            // Create new document
-            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-
-            // Save the new document with encoding preservation
-            try
-            {
-                var settings = new XmlWriterSettings
-                {
-                    Encoding = encoding ?? System.Text.Encoding.UTF8,
-                    Indent = true,
-                    IndentChars = "  ",
-                    OmitXmlDeclaration = false
-                };
-
-                using (var writer = XmlWriter.Create(filePath, settings))
-                {
-                    newDoc.Save(writer);
-                }
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
-            }
-
-            return newTfm;
+            return result.ResultingTargetFramework ?? oldTfm;
         });
     }
 
@@ -1959,93 +1735,14 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            if (!File.Exists(filePath))
-                throw new FileNotFoundException("Project file not found", filePath);
-
-            var fileInfo = new FileInfo(filePath);
-            if (fileInfo.IsReadOnly)
-                throw new InvalidOperationException($"File is read-only: {filePath}");
-
-            var backupPath = filePath + ".bak";
-            File.Copy(filePath, backupPath, overwrite: true);
-
-            XDocument doc;
-            Encoding? encoding;
-            using (var reader = new StreamReader(filePath, true))
+            var result = _conversionService.ConvertOldStyleToSdkStyleModern(filePath);
+            
+            if (!result.Success)
             {
-                reader.Peek();
-                encoding = reader.CurrentEncoding;
-            }
-            doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
-
-            var root = doc.Root ?? throw new InvalidOperationException("Invalid project file");
-            if (root.Attribute("Sdk") != null)
-                return ParseTargetFrameworks(root); // Already SDK-style
-
-            XNamespace ns = root.GetDefaultNamespace();
-
-            // Detect project type
-            bool isWinForms = DetectWinFormsProject(root, ns);
-            bool isWpf = DetectWpfProject(root, ns);
-            bool isDesktop = isWinForms || isWpf;
-
-            // Use legacy-to-modern mapping (does not force net9)
-            string mappedTfm = MapLegacyFrameworkToModernTfm(oldTfm, isDesktop);
-            string sdkValue = isDesktop ? "Microsoft.NET.Sdk.WindowsDesktop" : "Microsoft.NET.Sdk";
-
-            // Build new project structure
-            var project = new XElement("Project", new XAttribute("Sdk", sdkValue));
-            var propertyGroup = new XElement("PropertyGroup");
-
-            propertyGroup.Add(new XElement("TargetFramework", mappedTfm));
-            propertyGroup.Add(new XElement("Nullable", "enable"));
-            propertyGroup.Add(new XElement("ImplicitUsings", "enable"));
-            propertyGroup.Add(new XElement("LangVersion", "latest"));
-
-            AddPropertyIfExists(propertyGroup, root, ns, "OutputType");
-            AddPropertyIfExists(propertyGroup, root, ns, "RootNamespace");
-            AddPropertyIfExists(propertyGroup, root, ns, "AssemblyName");
-
-            if (isWinForms)
-                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
-            if (isWpf)
-                propertyGroup.Add(new XElement("UseWPF", "true"));
-
-            project.Add(propertyGroup);
-
-            // Preserve PackageReferences
-            var packageRefs = root
-                .Descendants(ns + "PackageReference")
-                .Select(CloneElementWithoutNamespace)
-                .ToList();
-
-            if (packageRefs.Any())
-            {
-                var group = new XElement("ItemGroup");
-                foreach (var pkg in packageRefs)
-                    group.Add(pkg);
-                project.Add(group);
+                throw new InvalidOperationException(result.Error);
             }
 
-            // Save atomically
-            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), project);
-            var tempPath = filePath + ".tmp";
-            var settings = new XmlWriterSettings
-            {
-                Encoding = encoding ?? Encoding.UTF8,
-                Indent = true,
-                IndentChars = "  ",
-                OmitXmlDeclaration = false
-            };
-
-            using (var writer = XmlWriter.Create(tempPath, settings))
-                newDoc.Save(writer);
-
-            File.Replace(tempPath, filePath, backupPath, ignoreMetadataErrors: true);
-
-            RunValidateProjectFile(filePath);
-
-            return mappedTfm;
+            return result.ResultingTargetFramework ?? oldTfm;
         });
     }
 
@@ -2527,199 +2224,14 @@ public partial class MainForm : Form
     {
         return await Task.Run(() =>
         {
-            // Check if file is read-only
-            if (File.Exists(filePath))
+            var result = _conversionService.ConvertSdkStyleToOldStyle(filePath);
+            
+            if (!result.Success)
             {
-                var fileInfo = new FileInfo(filePath);
-                if (fileInfo.IsReadOnly)
-                {
-                    throw new InvalidOperationException($"File is read-only: {filePath}");
-                }
+                throw new InvalidOperationException(result.Error);
             }
 
-            XDocument doc;
-            System.Text.Encoding? encoding = null;
-
-            try
-            {
-                // Detect encoding from file
-                using (var reader = new StreamReader(filePath, true))
-                {
-                    reader.Peek(); // Force encoding detection
-                    encoding = reader.CurrentEncoding;
-                }
-
-                doc = XDocument.Load(filePath, LoadOptions.PreserveWhitespace);
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"File is locked or inaccessible: {ex.Message}");
-            }
-
-            var root = doc.Root;
-
-            if (root == null)
-            {
-                throw new InvalidOperationException("Invalid project file");
-            }
-
-            // Check if already Old-style
-            if (root.Attribute("Sdk") == null)
-            {
-                // Already Old-style, skip
-                return ParseTargetFrameworks(root);
-            }
-
-            XNamespace ns = root.GetDefaultNamespace();
-            XNamespace msbuildNs = "http://schemas.microsoft.com/developer/msbuild/2003";
-
-            // Convert framework version from SDK-style to Old-style
-            string newTfm = ConvertSdkToOldStyleFrameworkVersion(currentTfm);
-
-            // Detect if it's a WinForms project
-            bool isWinForms = IsWinFormsInSdkProject(root, ns);
-
-            // Create new Old-style project
-            var newRoot = new XElement(msbuildNs + "Project");
-            newRoot.Add(new XAttribute("ToolsVersion", "15.0"));
-
-            // Default xmlns attribute
-            newRoot.Add(new XAttribute("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003"));
-
-            // Import Microsoft.CSharp.targets at the beginning
-            var importGroup1 = new XElement(msbuildNs + "Import");
-            importGroup1.Add(new XAttribute("Project", @"$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"));
-            importGroup1.Add(new XAttribute("Condition", @"Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"));
-            newRoot.Add(importGroup1);
-
-            // Create PropertyGroup with essential properties
-            var propertyGroup = new XElement(msbuildNs + "PropertyGroup");
-
-            // Copy Configuration and Platform
-            propertyGroup.Add(new XElement(msbuildNs + "Configuration", new XAttribute("Condition", " '$(Configuration)' == '' "), "Debug"));
-            propertyGroup.Add(new XElement(msbuildNs + "Platform", new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU"));
-
-            // Add ProjectGuid
-            propertyGroup.Add(new XElement(msbuildNs + "ProjectGuid", "{" + Guid.NewGuid().ToString().ToUpper() + "}"));
-
-            // Add OutputType
-            var outputType = root.Descendants(ns + "OutputType").FirstOrDefault();
-            if (outputType != null)
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "OutputType", outputType.Value));
-            }
-            else
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "OutputType", "Library"));
-            }
-
-            // Add RootNamespace
-            var rootNamespace = root.Descendants(ns + "RootNamespace").FirstOrDefault();
-            if (rootNamespace != null)
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", rootNamespace.Value));
-            }
-            else
-            {
-                // Use file name without extension
-                propertyGroup.Add(new XElement(msbuildNs + "RootNamespace", Path.GetFileNameWithoutExtension(filePath)));
-            }
-
-            // Add AssemblyName
-            var assemblyName = root.Descendants(ns + "AssemblyName").FirstOrDefault();
-            if (assemblyName != null)
-            {
-                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", assemblyName.Value));
-            }
-            else
-            {
-                // Use file name without extension
-                propertyGroup.Add(new XElement(msbuildNs + "AssemblyName", Path.GetFileNameWithoutExtension(filePath)));
-            }
-
-            // Add TargetFrameworkVersion
-            propertyGroup.Add(new XElement(msbuildNs + "TargetFrameworkVersion", newTfm));
-
-            // Add FileAlignment
-            propertyGroup.Add(new XElement(msbuildNs + "FileAlignment", "512"));
-
-            // Add Deterministic
-            propertyGroup.Add(new XElement(msbuildNs + "Deterministic", "true"));
-
-            newRoot.Add(propertyGroup);
-
-            // Add Debug PropertyGroup
-            var debugPropertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            debugPropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugSymbols", "true"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DebugType", "full"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "Optimize", "false"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Debug\"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "DEBUG;TRACE"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            debugPropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
-            newRoot.Add(debugPropertyGroup);
-
-            // Add Release PropertyGroup
-            var releasePropertyGroup = new XElement(msbuildNs + "PropertyGroup");
-            releasePropertyGroup.Add(new XAttribute("Condition", " '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "DebugType", "pdbonly"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "Optimize", "true"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "OutputPath", @"bin\Release\"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "DefineConstants", "TRACE"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "ErrorReport", "prompt"));
-            releasePropertyGroup.Add(new XElement(msbuildNs + "WarningLevel", "4"));
-            newRoot.Add(releasePropertyGroup);
-
-            // Add References ItemGroup
-            var referencesGroup = new XElement(msbuildNs + "ItemGroup");
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Core")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml.Linq")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data.DataSetExtensions")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "Microsoft.CSharp")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Data")));
-            referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Xml")));
-
-            // Add WinForms references if needed
-            if (isWinForms)
-            {
-                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Drawing")));
-                referencesGroup.Add(new XElement(msbuildNs + "Reference", new XAttribute("Include", "System.Windows.Forms")));
-            }
-
-            newRoot.Add(referencesGroup);
-
-            // Import Microsoft.CSharp.targets at the end
-            var importGroup2 = new XElement(msbuildNs + "Import");
-            importGroup2.Add(new XAttribute("Project", @"$(MSBuildToolsPath)\Microsoft.CSharp.targets"));
-            newRoot.Add(importGroup2);
-
-            // Create new document
-            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), newRoot);
-
-            // Save the new document with encoding preservation
-            try
-            {
-                var settings = new XmlWriterSettings
-                {
-                    Encoding = encoding ?? System.Text.Encoding.UTF8,
-                    Indent = true,
-                    IndentChars = "  ",
-                    OmitXmlDeclaration = false
-                };
-
-                using (var writer = XmlWriter.Create(filePath, settings))
-                {
-                    newDoc.Save(writer);
-                }
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException($"Failed to write to file (may be locked): {ex.Message}");
-            }
-
-            return newTfm;
+            return result.ResultingTargetFramework ?? currentTfm;
         });
     }
 
