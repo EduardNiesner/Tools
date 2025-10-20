@@ -140,6 +140,54 @@ public class ConversionTests : IDisposable
 
     #endregion
 
+    #region Test Case 2a: Old-style WinForms App → SDK-style should use WindowsDesktop SDK
+
+    [Fact]
+    public void TestCase2a_OldStyleWinFormsApp_UsesWindowsDesktopSdk()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "OldStyleWinFormsWindowsDesktop.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RootNamespace>WinFormsApp1</RootNamespace>
+    <AssemblyName>WinFormsApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Windows.Forms"" />
+    <Reference Include=""System.Drawing"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that SDK attribute is set to WindowsDesktop
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk.WindowsDesktop", sdkAttr.Value);
+        
+        // Check UseWindowsForms property
+        var useWindowsForms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWindowsForms");
+        Assert.NotNull(useWindowsForms);
+        Assert.Equal("true", useWindowsForms.Value);
+    }
+
+    #endregion
+
     #region Test Case 2b: Modern WinForms App (net8.0) should have -windows suffix
 
     [Fact]
@@ -169,6 +217,58 @@ public class ConversionTests : IDisposable
         
         // This test documents that net5.0+ WinForms SHOULD use netX-windows
         // The actual TFM in the test file would be net8.0-windows in real scenarios
+    }
+
+    #endregion
+
+    #region Test Case 2c: Old-style WPF App → SDK-style should use WindowsDesktop SDK
+
+    [Fact]
+    public void TestCase2c_OldStyleWpfApp_UsesWindowsDesktopSdk()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "OldStyleWpfWindowsDesktop.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RootNamespace>WpfApp1</RootNamespace>
+    <AssemblyName>WpfApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""PresentationCore"" />
+    <Reference Include=""PresentationFramework"" />
+    <Reference Include=""WindowsBase"" />
+    <Reference Include=""System.Xaml"" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include=""App.xaml"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that SDK attribute is set to WindowsDesktop
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk.WindowsDesktop", sdkAttr.Value);
+        
+        // Check UseWPF property
+        var useWpf = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWPF");
+        Assert.NotNull(useWpf);
+        Assert.Equal("true", useWpf.Value);
     }
 
     #endregion
@@ -207,6 +307,47 @@ public class ConversionTests : IDisposable
         Assert.NotNull(root);
         
         // Check that variable is preserved exactly
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("$(MyCustomFramework)", tfm.Value);
+    }
+
+    #endregion
+
+    #region Test Case 3b: Variable Token Preservation in Modern Conversion (Old→SDK One-Way)
+
+    [Fact]
+    public void TestCase3b_VariableTokenPreservation_OldToSdkModern()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "OldStyleWithVariableModern.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>$(MyCustomFramework)</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApp1</RootNamespace>
+    <AssemblyName>ConsoleApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that variable is preserved exactly (not rewritten to net48)
         var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
         Assert.NotNull(tfm);
         Assert.Equal("$(MyCustomFramework)", tfm.Value);
