@@ -87,8 +87,10 @@ public class ProjectConversionService
             // Get framework version
             var oldTfm = ParseTargetFrameworks(root);
 
-            // Detect if it's a WinForms project
+            // Detect if it's a WinForms or WPF project
             bool isWinForms = DetectWinFormsProject(root, ns);
+            bool isWpf = DetectWpfProject(root, ns);
+            bool isDesktop = isWinForms || isWpf;
 
             // Convert framework version
             string newTfm = ConvertFrameworkVersion(oldTfm, isWinForms);
@@ -96,8 +98,9 @@ public class ProjectConversionService
             // Create new SDK-style project
             var newRoot = new XElement("Project");
 
-            // Determine SDK attribute
-            newRoot.Add(new XAttribute("Sdk", "Microsoft.NET.Sdk"));
+            // Determine SDK attribute - use WindowsDesktop SDK for WinForms/WPF projects
+            string sdkValue = isDesktop ? "Microsoft.NET.Sdk.WindowsDesktop" : "Microsoft.NET.Sdk";
+            newRoot.Add(new XAttribute("Sdk", sdkValue));
 
             // Create PropertyGroup with essential properties
             var propertyGroup = new XElement("PropertyGroup");
@@ -116,6 +119,12 @@ public class ProjectConversionService
             if (isWinForms)
             {
                 propertyGroup.Add(new XElement("UseWindowsForms", "true"));
+            }
+
+            // Add WPF specific properties if needed
+            if (isWpf)
+            {
+                propertyGroup.Add(new XElement("UseWPF", "true"));
             }
 
             // Add common properties
@@ -917,12 +926,20 @@ public class ProjectConversionService
         if (string.IsNullOrWhiteSpace(oldTfm))
             return isDesktop ? "net48-windows" : "net48";
 
-        var tfm = oldTfm.Trim().ToLowerInvariant();
+        var tfm = oldTfm.Trim();
+
+        // Preserve variable tokens verbatim (e.g., $(TargetFrameworks))
+        if (tfm.StartsWith("$"))
+        {
+            return tfm;
+        }
+
+        var tfmLower = tfm.ToLowerInvariant();
 
         // Handle old-style values like "v4.7.2"
-        if (tfm.StartsWith("v"))
+        if (tfmLower.StartsWith("v"))
         {
-            var version = tfm.Substring(1).Replace(".", "");
+            var version = tfmLower.Substring(1).Replace(".", "");
             var mapped = "net" + version;
             if (isDesktop && !mapped.EndsWith("-windows"))
                 mapped += "-windows";
@@ -930,7 +947,7 @@ public class ProjectConversionService
         }
 
         // Already SDK-like
-        if (tfm.StartsWith("net"))
+        if (tfmLower.StartsWith("net"))
             return tfm;
 
         // Fallback
