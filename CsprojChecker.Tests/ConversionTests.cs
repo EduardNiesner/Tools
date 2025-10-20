@@ -273,6 +273,260 @@ public class ConversionTests : IDisposable
 
     #endregion
 
+    #region Test Case 2d: Modern WinForms Conversion (Old-style net48 WinForms → Modern SDK with net8.0-windows)
+
+    [Fact]
+    public void TestCase2d_ModernWinFormsConversion_UsesWindowsDesktopSdkAndCorrectTfm()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "ModernWinFormsConversion.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RootNamespace>WinFormsApp1</RootNamespace>
+    <AssemblyName>WinFormsApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Windows.Forms"" />
+    <Reference Include=""System.Drawing"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use modern conversion (one-way)
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Modern conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that SDK attribute is set to WindowsDesktop
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk.WindowsDesktop", sdkAttr.Value);
+        
+        // Check UseWindowsForms property is present
+        var useWindowsForms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWindowsForms");
+        Assert.NotNull(useWindowsForms);
+        Assert.Equal("true", useWindowsForms.Value);
+        
+        // Check that TFM is net48-windows (modern conversion maps old .NET Framework to modern with -windows suffix for desktop apps)
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("net48-windows", tfm.Value);
+    }
+
+    #endregion
+
+    #region Test Case 2e: Non-Desktop Console App Conversion Guard Tests
+
+    [Fact]
+    public void TestCase2e_NonDesktopConsoleApp_UsesStandardSdkInBothConversions()
+    {
+        // Arrange - Old-style console app (non-desktop)
+        var projectPath = Path.Combine(_testDirectory, "NonDesktopConsole.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApp1</RootNamespace>
+    <AssemblyName>ConsoleApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use round-trip conversion
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that SDK attribute is set to standard Microsoft.NET.Sdk (NOT WindowsDesktop)
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk", sdkAttr.Value);
+        
+        // Check that no UseWindowsForms property is present
+        var useWindowsForms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWindowsForms");
+        Assert.Null(useWindowsForms);
+        
+        // Check that no UseWPF property is present
+        var useWpf = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWPF");
+        Assert.Null(useWpf);
+        
+        // Check TFM is net48 without -windows suffix
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("net48", tfm.Value);
+    }
+
+    [Fact]
+    public void TestCase2f_NonDesktopConsoleApp_ModernConversion_UsesStandardSdk()
+    {
+        // Arrange - Old-style console app (non-desktop)
+        var projectPath = Path.Combine(_testDirectory, "NonDesktopConsoleModern.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApp1</RootNamespace>
+    <AssemblyName>ConsoleApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use modern (one-way) conversion
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Modern conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check that SDK attribute is set to standard Microsoft.NET.Sdk (NOT WindowsDesktop)
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk", sdkAttr.Value);
+        
+        // Check that no UseWindowsForms property is present
+        var useWindowsForms = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWindowsForms");
+        Assert.Null(useWindowsForms);
+        
+        // Check that no UseWPF property is present
+        var useWpf = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "UseWPF");
+        Assert.Null(useWpf);
+        
+        // Check TFM - for modern conversion of non-desktop, it should be net472 (without -windows)
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("net472", tfm.Value);
+    }
+
+    #endregion
+
+    #region Test Case 2g: TFM Suffix Regression Tests - net4x Never Gets -windows Suffix
+
+    [Theory]
+    [InlineData("v4.8", "net48")]
+    [InlineData("v4.7.2", "net472")]
+    [InlineData("v4.7.1", "net471")]
+    [InlineData("v4.7", "net47")]
+    [InlineData("v4.6.2", "net462")]
+    [InlineData("v4.6.1", "net461")]
+    [InlineData("v4.6", "net46")]
+    [InlineData("v4.5.2", "net452")]
+    [InlineData("v4.5.1", "net451")]
+    [InlineData("v4.5", "net45")]
+    public void TestCase2g_Net4xWinFormsRoundTrip_NeverGetsWindowsSuffix(string oldVersion, string expectedTfm)
+    {
+        // Arrange - Old-style WinForms with .NET Framework 4.x
+        var projectPath = Path.Combine(_testDirectory, $"WinForms_{oldVersion.Replace(".", "_")}_RoundTrip.csproj");
+        var oldStyleContent = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFrameworkVersion>{oldVersion}</TargetFrameworkVersion>
+    <RootNamespace>WinFormsApp1</RootNamespace>
+    <AssemblyName>WinFormsApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Windows.Forms"" />
+    <Reference Include=""System.Drawing"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use round-trip conversion (should preserve .NET Framework compatibility)
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed for {oldVersion}: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check TFM - .NET Framework 4.x should NEVER have -windows suffix in round-trip conversion
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal(expectedTfm, tfm.Value);
+        Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("v4.8")]
+    [InlineData("v4.7.2")]
+    [InlineData("v4.6.2")]
+    public void TestCase2h_Net4xConsoleRoundTrip_NeverGetsWindowsSuffix(string oldVersion)
+    {
+        // Arrange - Old-style console app with .NET Framework 4.x
+        var projectPath = Path.Combine(_testDirectory, $"Console_{oldVersion.Replace(".", "_")}_RoundTrip.csproj");
+        var oldStyleContent = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>{oldVersion}</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApp1</RootNamespace>
+    <AssemblyName>ConsoleApp1</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act - Use round-trip conversion
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed for {oldVersion}: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check TFM - .NET Framework 4.x should NEVER have -windows suffix
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.DoesNotContain("-windows", tfm.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
+
     #region Test Case 3: Variable Token Preservation (Old→SDK)
 
     [Fact]
