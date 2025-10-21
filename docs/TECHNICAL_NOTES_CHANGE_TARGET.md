@@ -5,7 +5,7 @@ Modified the `UpdateFrameworkOperationsState()` method in `MainForm.cs` to enabl
 
 ## Code Changes
 
-### File: CsprojChecker/MainForm.cs
+### File: CsProjConverter/MainForm.cs
 
 #### Method Modified: `UpdateFrameworkOperationsState()`
 **Location:** Lines ~1548-1594

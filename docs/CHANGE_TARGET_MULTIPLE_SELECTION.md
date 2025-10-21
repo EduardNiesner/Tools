@@ -1,7 +1,7 @@
 # Change Target Framework - Multiple Selection Behavior
 
 ## Overview
-This document describes the behavior of the "Change Target Framework" functionality when multiple projects are selected in the CsprojChecker application.
+This document describes the behavior of the "Change Target Framework" functionality when multiple projects are selected in the CsProjConverter application.
 
 ## Feature Description
 The "Change Target Framework" button is now enabled when multiple projects with the same project type (all SDK or all Old-style) are selected, regardless of their current target framework values.
@@ -58,7 +58,7 @@ The "Change Target Framework" button is **disabled** when:
 ## Implementation Details
 
 ### Modified Method
-- **File:** `CsprojChecker/MainForm.cs`
+- **File:** `CsProjConverter/MainForm.cs`
 - **Method:** `UpdateFrameworkOperationsState()`
 - **Lines:** ~1548-1594
 

@@ -21,7 +21,7 @@ Modified the button enablement logic to enable "Change Target Framework" when al
 ## Technical Changes
 
 ### Files Modified: 1 Code File
-**File:** `CsprojChecker/MainForm.cs`  
+**File:** `CsProjConverter/MainForm.cs`  
 **Method:** `UpdateFrameworkOperationsState()`  
 **Lines:** 1548-1594  
 **Changes:** 52 lines (35 added, 17 removed)
@@ -175,8 +175,8 @@ if (allSameProjectType) {
 - No external dependencies added
 
 ### Installation
-1. Build the solution: `dotnet build CsprojChecker.sln`
-2. Run tests: `dotnet test CsprojChecker.sln`
+1. Build the solution: `dotnet build CsProjConverter.sln`
+2. Run tests: `dotnet test CsProjConverter.sln`
 3. Deploy: Copy artifacts from `bin/Release/net9.0-windows/`
 
 ### Rollback Plan
@@ -240,7 +240,7 @@ This implementation successfully delivers the requested functionality with:
 - ✅ Zero regressions or breaking changes
 - ✅ Production-ready quality
 
-The feature is **ready for release** and will significantly improve the user experience for developers managing multiple .NET projects with the CsprojChecker tool.
+The feature is **ready for release** and will significantly improve the user experience for developers managing multiple .NET projects with the CsProjConverter tool.
 
 ---
 
@@ -267,7 +267,7 @@ aeba65c Add comprehensive examples for Change Target feature
   - `docs/CHANGE_TARGET_MULTIPLE_SELECTION.md`
   - `docs/TECHNICAL_NOTES_CHANGE_TARGET.md`
   - `docs/EXAMPLES_CHANGE_TARGET.md`
-- **Implementation:** `CsprojChecker/MainForm.cs` (lines 1548-1594)
+- **Implementation:** `CsProjConverter/MainForm.cs` (lines 1548-1594)
 
 ---
 

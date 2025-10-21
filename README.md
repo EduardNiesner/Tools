@@ -1,4 +1,4 @@
-# Csproj Checker
+# CsProjConverter
 
 A WinForms application for checking and managing .csproj files.
 
@@ -16,7 +16,7 @@ dotnet build
 ## Running
 
 ```bash
-dotnet run --project CsprojChecker
+dotnet run --project CsProjConverter
 ```
 
 ## Testing
@@ -39,7 +39,7 @@ dotnet test --logger "console;verbosity=detailed"
   - Append Target Framework operations (7 tests)
   - Buildability validation
 
-See [CsprojChecker.Tests/TEST_RESULTS.md](CsprojChecker.Tests/TEST_RESULTS.md) for detailed test results and coverage information.
+See [CsProjConverter.Tests/TEST_RESULTS.md](CsProjConverter.Tests/TEST_RESULTS.md) for detailed test results and coverage information.
 
 ## Features
 
@@ -48,7 +48,7 @@ See [CsprojChecker.Tests/TEST_RESULTS.md](CsprojChecker.Tests/TEST_RESULTS.md) f
 - **Directory ComboBox:** Browse button and ComboBox to select folders containing .csproj files
   - ComboBox displays the last 10 unique directories selected by the user
   - Automatically selects the most recent directory on startup
-  - Directories are persisted to `%APPDATA%\CsprojChecker\settings.json`
+  - Directories are persisted to `%APPDATA%\CsProjConverter\settings.json`
   - Most recent directories are shown at the top of the list
   - Directories are unique (no duplicates)
 - **File Filtering TextBox:** Real-time filtering of files in the table
@@ -145,7 +145,7 @@ See [CsprojChecker.Tests/TEST_RESULTS.md](CsprojChecker.Tests/TEST_RESULTS.md) f
 
 ## Project Structure
 
-- `CsprojChecker/` - Main WinForms application
+- `CsProjConverter/` - Main WinForms application
   - `Program.cs` - Application entry point
   - `MainForm.cs` - Main application form with UI layout and scanning logic
 - `docs/` - Documentation
@@ -180,7 +180,7 @@ Uses XML parsing to determine project characteristics:
 - **Browse Button**: Opens folder browser dialog with memory of last path
 - **Directory ComboBox**: Displays the last 10 unique directories selected by the user
   - Automatically selects the most recent directory on startup
-  - Directories are persisted to `%APPDATA%\CsprojChecker\settings.json`
+  - Directories are persisted to `%APPDATA%\CsProjConverter\settings.json`
   - Most recent directories are shown at the top of the dropdown list
 - **File Filtering TextBox**: Real-time filtering of files in the table
   - Located at the top of the GUI

@@ -1,6 +1,6 @@
 # Conversion Logic Implementation Validation
 
-This document provides evidence that the .csproj conversion logic in `CsprojChecker/MainForm.cs` fully implements the specifications in `docs/csproj-conversion-reference.md`.
+This document provides evidence that the .csproj conversion logic in `CsProjConverter/MainForm.cs` fully implements the specifications in `docs/csproj-conversion-reference.md`.
 
 ## Quick Summary
 
@@ -113,7 +113,7 @@ The reference documentation (`docs/csproj-conversion-reference.md`) is:
 
 ## Conclusion
 
-The .csproj conversion logic implementation in CsprojChecker is **production-ready** and **fully compliant** with the documented specifications. The code handles all specified conversion scenarios correctly, enforces all documented constraints, and handles edge cases appropriately.
+The .csproj conversion logic implementation in CsProjConverter is **production-ready** and **fully compliant** with the documented specifications. The code handles all specified conversion scenarios correctly, enforces all documented constraints, and handles edge cases appropriately.
 
 **Recommendation**: No code changes needed. The implementation can be considered complete and ready for use.
 
