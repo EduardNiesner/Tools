@@ -1183,6 +1183,580 @@ namespace ConsoleApp1
 
     #endregion
 
+    #region Custom One-Way Modern Conversion Tests
+
+    [Fact]
+    public void Test_CustomOneWayModern_BasicLibraryConversion()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernLibrary.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{12345678-1234-1234-1234-123456789ABC}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>MyLibrary</RootNamespace>
+    <AssemblyName>MyLibrary</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+    <Compile Include=""Properties\AssemblyInfo.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        Assert.Equal("Project", root.Name.LocalName);
+        Assert.NotNull(root.Attribute("Sdk"));
+        
+        // Check target framework
+        var tfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFramework");
+        Assert.NotNull(tfm);
+        Assert.Equal("net472", tfm.Value);
+        
+        // Check modern properties are added
+        var generateAssemblyInfo = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "GenerateAssemblyInfo");
+        Assert.NotNull(generateAssemblyInfo);
+        Assert.Equal("True", generateAssemblyInfo.Value);
+        
+        var enableDefaultCompile = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "EnableDefaultCompileItems");
+        Assert.NotNull(enableDefaultCompile);
+        Assert.Equal("false", enableDefaultCompile.Value);
+        
+        var enableDefaultEmbedded = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "EnableDefaultEmbeddedResourceItems");
+        Assert.NotNull(enableDefaultEmbedded);
+        Assert.Equal("false", enableDefaultEmbedded.Value);
+        
+        var appendTfm = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "AppendTargetFrameworkToOutputPath");
+        Assert.NotNull(appendTfm);
+        Assert.Equal("true", appendTfm.Value);
+        
+        // Check obsolete properties are removed
+        var productVersion = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ProductVersion");
+        Assert.Null(productVersion);
+        
+        var schemaVersion = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "SchemaVersion");
+        Assert.Null(schemaVersion);
+        
+        var appDesignerFolder = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "AppDesignerFolder");
+        Assert.Null(appDesignerFolder);
+        
+        // Check OutputType is preserved
+        var outputType = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "OutputType");
+        Assert.NotNull(outputType);
+        Assert.Equal("Library", outputType.Value);
+        
+        // Check ProjectGuid is preserved
+        var projectGuid = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ProjectGuid");
+        Assert.NotNull(projectGuid);
+        Assert.Equal("{12345678-1234-1234-1234-123456789ABC}", projectGuid.Value);
+        
+        // Check Configuration and Platform are preserved
+        var config = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "Configuration");
+        Assert.NotNull(config);
+        Assert.Equal("Debug", config.Value);
+        
+        var platform = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "Platform");
+        Assert.NotNull(platform);
+        Assert.Equal("AnyCPU", platform.Value);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_ConfigurationPreservation()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernConfig.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;CODE_ANALYSIS;SIM</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>3</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check conditional property groups are preserved
+        var debugGroup = root.Elements()
+            .Where(e => e.Name.LocalName == "PropertyGroup")
+            .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Debug") == true);
+        
+        Assert.NotNull(debugGroup);
+        
+        // Check DefineConstants is preserved
+        var defineConstants = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "DefineConstants");
+        Assert.NotNull(defineConstants);
+        Assert.Equal("TRACE;DEBUG;CODE_ANALYSIS;SIM", defineConstants.Value);
+        
+        // Check DebugType is preserved
+        var debugType = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "DebugType");
+        Assert.NotNull(debugType);
+        Assert.Equal("full", debugType.Value);
+        
+        // Check Optimize is preserved
+        var optimize = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "Optimize");
+        Assert.NotNull(optimize);
+        Assert.Equal("false", optimize.Value);
+        
+        // Check WarningLevel is preserved
+        var warningLevel = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "WarningLevel");
+        Assert.NotNull(warningLevel);
+        Assert.Equal("4", warningLevel.Value);
+        
+        // Check ErrorReport is removed
+        var errorReport = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "ErrorReport");
+        Assert.Null(errorReport);
+        
+        // Check Release configuration
+        var releaseGroup = root.Elements()
+            .Where(e => e.Name.LocalName == "PropertyGroup")
+            .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Release") == true);
+        
+        Assert.NotNull(releaseGroup);
+        
+        var releaseWarning = releaseGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "WarningLevel");
+        Assert.NotNull(releaseWarning);
+        Assert.Equal("3", releaseWarning.Value);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_PlatformTargetVariants()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernPlatform.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check conditional property group
+        var debugGroup = root.Elements()
+            .Where(e => e.Name.LocalName == "PropertyGroup")
+            .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Debug") == true);
+        
+        Assert.NotNull(debugGroup);
+        
+        // Check PlatformTarget is preserved
+        var platformTarget = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "PlatformTarget");
+        Assert.NotNull(platformTarget);
+        Assert.Equal("x86", platformTarget.Value);
+        
+        // Check Prefer32Bit is preserved
+        var prefer32Bit = debugGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "Prefer32Bit");
+        Assert.NotNull(prefer32Bit);
+        Assert.Equal("true", prefer32Bit.Value);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_ProjectReferenceCleanup()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernProjRef.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MyLib</RootNamespace>
+    <AssemblyName>MyLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\..\Custom\Custom.csproj"">
+      <Project>{ABCD1234-1234-1234-1234-123456789ABC}</Project>
+      <Name>Custom</Name>
+    </ProjectReference>
+    <ProjectReference Include=""..\Other\Other.csproj"">
+      <Project>{EFGH5678-5678-5678-5678-567856785678}</Project>
+      <Name>Other</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check ProjectReferences are simplified
+        var projectRefs = root.Descendants().Where(e => e.Name.LocalName == "ProjectReference").ToList();
+        Assert.Equal(2, projectRefs.Count);
+        
+        // Check first reference
+        var firstRef = projectRefs[0];
+        Assert.Equal(@"..\..\Custom\Custom.csproj", firstRef.Attribute("Include")?.Value);
+        // Should be self-closing (no child elements)
+        Assert.Empty(firstRef.Elements());
+        
+        // Check second reference
+        var secondRef = projectRefs[1];
+        Assert.Equal(@"..\Other\Other.csproj", secondRef.Attribute("Include")?.Value);
+        Assert.Empty(secondRef.Elements());
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_CompileItemRetention()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernCompile.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MyLib</RootNamespace>
+    <AssemblyName>MyLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+    <Compile Include=""Class2.cs"" />
+    <Compile Include=""Helpers\Helper.cs"" />
+    <Compile Include=""Properties\AssemblyInfo.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check EnableDefaultCompileItems is false
+        var enableDefaultCompile = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "EnableDefaultCompileItems");
+        Assert.NotNull(enableDefaultCompile);
+        Assert.Equal("false", enableDefaultCompile.Value);
+        
+        // Check all Compile items are preserved
+        var compileItems = root.Descendants().Where(e => e.Name.LocalName == "Compile").ToList();
+        Assert.Equal(4, compileItems.Count);
+        
+        // Verify specific files
+        var class1 = compileItems.FirstOrDefault(e => e.Attribute("Include")?.Value == "Class1.cs");
+        Assert.NotNull(class1);
+        
+        var class2 = compileItems.FirstOrDefault(e => e.Attribute("Include")?.Value == "Class2.cs");
+        Assert.NotNull(class2);
+        
+        var helper = compileItems.FirstOrDefault(e => e.Attribute("Include")?.Value == @"Helpers\Helper.cs");
+        Assert.NotNull(helper);
+        
+        var assemblyInfo = compileItems.FirstOrDefault(e => e.Attribute("Include")?.Value == @"Properties\AssemblyInfo.cs");
+        Assert.NotNull(assemblyInfo);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_GuidRetention()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernGuid.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <ProjectGuid>{AAAABBBB-CCCC-DDDD-EEEE-FFFFGGGGHHH}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>SharedLib</RootNamespace>
+    <AssemblyName>SharedLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Shared.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check ProjectGuid is retained for backward compatibility
+        var projectGuid = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ProjectGuid");
+        Assert.NotNull(projectGuid);
+        Assert.Equal("{AAAABBBB-CCCC-DDDD-EEEE-FFFFGGGGHHH}", projectGuid.Value);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_CleanMetadata()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernClean.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{12345678-1234-1234-1234-123456789ABC}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>CleanLib</RootNamespace>
+    <AssemblyName>CleanLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetFrameworkProfile></TargetFrameworkProfile>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check all obsolete properties are removed
+        var productVersion = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ProductVersion");
+        Assert.Null(productVersion);
+        
+        var schemaVersion = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "SchemaVersion");
+        Assert.Null(schemaVersion);
+        
+        var appDesignerFolder = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "AppDesignerFolder");
+        Assert.Null(appDesignerFolder);
+        
+        var targetFrameworkProfile = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "TargetFrameworkProfile");
+        Assert.Null(targetFrameworkProfile);
+        
+        var errorReport = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ErrorReport");
+        Assert.Null(errorReport);
+        
+        // Check FileAlignment is removed (not needed in SDK-style)
+        var fileAlignment = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "FileAlignment");
+        Assert.Null(fileAlignment);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_RemovesEmptyStartupObjectForLibrary()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernLibStartup.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MyLib</RootNamespace>
+    <AssemblyName>MyLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <StartupObject></StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check StartupObject is NOT present (empty for library)
+        var startupObject = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "StartupObject");
+        Assert.Null(startupObject);
+    }
+
+    [Fact]
+    public void Test_CustomOneWayModern_PreservesStartupObjectForExecutable()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernExeStartup.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <StartupObject>MyApp.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check StartupObject is preserved for executable
+        var startupObject = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "StartupObject");
+        Assert.NotNull(startupObject);
+        Assert.Equal("MyApp.Program", startupObject.Value);
+    }
+
+    #endregion
+
     #region Helper Classes
 
     private class BuildResult
