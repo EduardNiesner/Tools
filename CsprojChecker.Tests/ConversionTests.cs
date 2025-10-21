@@ -1757,6 +1757,357 @@ namespace ConsoleApp1
 
     #endregion
 
+    #region Extended Custom Modern Conversion Tests
+
+    [Fact]
+    public void Test_CustomModern_ContentAndNonePreservation()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernContentNone.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=""config.json"">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include=""data\sample.txt"">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <None Include=""App.config"" />
+    <None Include=""readme.txt"">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check Content items are preserved
+        var contentItems = root.Descendants().Where(e => e.Name.LocalName == "Content").ToList();
+        Assert.Equal(2, contentItems.Count);
+        
+        var configJson = contentItems.FirstOrDefault(e => e.Attribute("Include")?.Value == "config.json");
+        Assert.NotNull(configJson);
+        var copyToOutput = configJson.Elements().FirstOrDefault(e => e.Name.LocalName == "CopyToOutputDirectory");
+        Assert.NotNull(copyToOutput);
+        Assert.Equal("PreserveNewest", copyToOutput.Value);
+        
+        // Check None items are preserved
+        var noneItems = root.Descendants().Where(e => e.Name.LocalName == "None").ToList();
+        Assert.Equal(2, noneItems.Count);
+        
+        var appConfig = noneItems.FirstOrDefault(e => e.Attribute("Include")?.Value == "App.config");
+        Assert.NotNull(appConfig);
+    }
+
+    [Fact]
+    public void Test_CustomModern_ApplicationIconForWinExe()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernIconWinExe.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>WinApp</RootNamespace>
+    <AssemblyName>WinApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Windows.Forms"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check ApplicationIcon is preserved for WinExe
+        var appIcon = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ApplicationIcon");
+        Assert.NotNull(appIcon);
+        Assert.Equal("app.ico", appIcon.Value);
+        
+        // Check that icon file is included as Content if not already present
+        var contentItems = root.Descendants().Where(e => e.Name.LocalName == "Content").ToList();
+        var iconContent = contentItems.FirstOrDefault(e => e.Attribute("Include")?.Value == "app.ico");
+        Assert.NotNull(iconContent);
+    }
+
+    [Fact]
+    public void Test_CustomModern_ApplicationIconRemovedForLibrary()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernIconLibrary.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MyLib</RootNamespace>
+    <AssemblyName>MyLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check ApplicationIcon is NOT preserved for Library
+        var appIcon = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ApplicationIcon");
+        Assert.Null(appIcon);
+    }
+
+    [Fact]
+    public void Test_CustomModern_LocalReferenceWithHintPath()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernLocalRef.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""ThirdPartyLib"">
+      <HintPath>..\lib\ThirdPartyLib.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check local reference with HintPath is preserved
+        var references = root.Descendants().Where(e => e.Name.LocalName == "Reference").ToList();
+        var thirdPartyRef = references.FirstOrDefault(e => e.Attribute("Include")?.Value == "ThirdPartyLib");
+        Assert.NotNull(thirdPartyRef);
+        
+        var hintPath = thirdPartyRef.Elements().FirstOrDefault(e => e.Name.LocalName == "HintPath");
+        Assert.NotNull(hintPath);
+        Assert.Equal(@"..\lib\ThirdPartyLib.dll", hintPath.Value);
+        
+        // Check framework references are removed
+        var systemRef = references.FirstOrDefault(e => e.Attribute("Include")?.Value == "System");
+        Assert.Null(systemRef);
+        
+        var systemCoreRef = references.FirstOrDefault(e => e.Attribute("Include")?.Value == "System.Core");
+        Assert.Null(systemCoreRef);
+    }
+
+    [Fact]
+    public void Test_CustomModern_NuGetPackagesReferenceConversion()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernNuGetRef.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed"">
+      <HintPath>..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include=""System"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check NuGet package is converted to PackageReference
+        var packageRefs = root.Descendants().Where(e => e.Name.LocalName == "PackageReference").ToList();
+        var newtonsoft = packageRefs.FirstOrDefault(e => e.Attribute("Include")?.Value == "Newtonsoft.Json");
+        Assert.NotNull(newtonsoft);
+        
+        var version = newtonsoft.Attribute("Version");
+        Assert.NotNull(version);
+        Assert.Equal("13.0.1", version.Value);
+        
+        // Check old Reference is removed
+        var references = root.Descendants().Where(e => e.Name.LocalName == "Reference").ToList();
+        var oldNewtonsoft = references.FirstOrDefault(e => e.Attribute("Include")?.Value.Contains("Newtonsoft.Json") == true);
+        Assert.Null(oldNewtonsoft);
+    }
+
+    [Fact]
+    public void Test_CustomModern_AutoGenerateBindingRedirectsPreservation()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernBindingRedirects.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MyApp</RootNamespace>
+    <AssemblyName>MyApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Program.cs"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check AutoGenerateBindingRedirects is preserved
+        var autoGenBindingRedirects = root.Descendants().FirstOrDefault(e => e.Name.LocalName == "AutoGenerateBindingRedirects");
+        Assert.NotNull(autoGenBindingRedirects);
+        Assert.Equal("true", autoGenBindingRedirects.Value);
+    }
+
+    [Fact]
+    public void Test_CustomModern_FolderItemsNotIncluded()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "CustomModernFolders.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MyLib</RootNamespace>
+    <AssemblyName>MyLib</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""Class1.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include=""Properties\"" />
+    <Folder Include=""Models\"" />
+    <Folder Include=""Services\"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        
+        // Check Folder items are NOT included
+        var folderItems = root.Descendants().Where(e => e.Name.LocalName == "Folder").ToList();
+        Assert.Empty(folderItems);
+    }
+
+    #endregion
+
     #region Helper Classes
 
     private class BuildResult

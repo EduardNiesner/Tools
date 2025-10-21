@@ -445,6 +445,23 @@ public class ProjectConversionService
                 propertyGroup.Add(new XElement("StartupObject", startupObject.Value));
             }
 
+            // Preserve AutoGenerateBindingRedirects if it exists
+            var autoGenBindingRedirects = root.Descendants(ns + "AutoGenerateBindingRedirects").FirstOrDefault();
+            if (autoGenBindingRedirects != null && !string.IsNullOrWhiteSpace(autoGenBindingRedirects.Value))
+            {
+                propertyGroup.Add(new XElement("AutoGenerateBindingRedirects", autoGenBindingRedirects.Value));
+            }
+
+            // Handle ApplicationIcon
+            var applicationIcon = root.Descendants(ns + "ApplicationIcon").FirstOrDefault();
+            bool isExecutable = outputTypeElement?.Value.Equals("Exe", StringComparison.OrdinalIgnoreCase) == true ||
+                               outputTypeElement?.Value.Equals("WinExe", StringComparison.OrdinalIgnoreCase) == true;
+            
+            if (applicationIcon != null && !string.IsNullOrWhiteSpace(applicationIcon.Value) && isExecutable)
+            {
+                propertyGroup.Add(new XElement("ApplicationIcon", applicationIcon.Value));
+            }
+
             if (isWinForms)
                 propertyGroup.Add(new XElement("UseWindowsForms", "true"));
             if (isWpf)
@@ -511,16 +528,122 @@ public class ProjectConversionService
                 project.Add(embeddedGroup);
             }
 
-            // Preserve PackageReferences
-            var packageRefs = root
+            // Preserve Content items
+            var contentItems = root.Descendants(ns + "Content").ToList();
+            
+            // If ApplicationIcon exists and is not already in Content, add it
+            if (applicationIcon != null && !string.IsNullOrWhiteSpace(applicationIcon.Value) && isExecutable)
+            {
+                var iconPath = applicationIcon.Value;
+                bool iconAlreadyInContent = contentItems.Any(c => c.Attribute("Include")?.Value == iconPath);
+                if (!iconAlreadyInContent)
+                {
+                    // Add icon to content items
+                    var iconContent = new XElement(ns + "Content");
+                    iconContent.Add(new XAttribute("Include", iconPath));
+                    contentItems.Add(iconContent);
+                }
+            }
+
+            if (contentItems.Any())
+            {
+                var contentGroup = new XElement("ItemGroup");
+                foreach (var content in contentItems)
+                {
+                    var newContent = CloneElementWithoutNamespace(content);
+                    contentGroup.Add(newContent);
+                }
+                project.Add(contentGroup);
+            }
+
+            // Preserve None items
+            var noneItems = root.Descendants(ns + "None").ToList();
+            if (noneItems.Any())
+            {
+                var noneGroup = new XElement("ItemGroup");
+                foreach (var none in noneItems)
+                {
+                    var newNone = CloneElementWithoutNamespace(none);
+                    noneGroup.Add(newNone);
+                }
+                project.Add(noneGroup);
+            }
+
+            // Handle Reference elements
+            var references = root.Descendants(ns + "Reference").ToList();
+            var localReferences = new List<XElement>();
+            var packageReferencesToAdd = new List<(string Name, string Version)>();
+
+            foreach (var reference in references)
+            {
+                var includeName = reference.Attribute("Include")?.Value ?? "";
+                var hintPath = reference.Elements(ns + "HintPath").FirstOrDefault()?.Value;
+
+                // Skip framework references that are automatically included by SDK
+                if (IsFrameworkReference(includeName))
+                {
+                    continue;
+                }
+
+                // Check if this is a NuGet package reference (HintPath contains /packages/)
+                if (!string.IsNullOrEmpty(hintPath) && hintPath.Contains(@"\packages\"))
+                {
+                    // Extract package name and version from HintPath
+                    // Example: ..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll
+                    var match = System.Text.RegularExpressions.Regex.Match(
+                        hintPath, 
+                        @"\\packages\\([^\\]+?)\.(\d+(?:\.\d+)+)\\");
+                    
+                    if (match.Success)
+                    {
+                        var packageName = match.Groups[1].Value;
+                        var packageVersion = match.Groups[2].Value;
+                        packageReferencesToAdd.Add((packageName, packageVersion));
+                        continue;
+                    }
+                }
+
+                // Keep local references with HintPath
+                if (!string.IsNullOrEmpty(hintPath))
+                {
+                    localReferences.Add(reference);
+                }
+            }
+
+            // Add local references
+            if (localReferences.Any())
+            {
+                var refGroup = new XElement("ItemGroup");
+                foreach (var localRef in localReferences)
+                {
+                    var newRef = CloneElementWithoutNamespace(localRef);
+                    refGroup.Add(newRef);
+                }
+                project.Add(refGroup);
+            }
+
+            // Preserve existing PackageReferences and add converted ones
+            var existingPackageRefs = root
                 .Descendants(ns + "PackageReference")
                 .Select(CloneElementWithoutNamespace)
                 .ToList();
 
-            if (packageRefs.Any())
+            var allPackageRefs = new List<XElement>();
+            allPackageRefs.AddRange(existingPackageRefs);
+
+            // Add converted NuGet references
+            foreach (var (name, version) in packageReferencesToAdd)
+            {
+                var packageRef = new XElement("PackageReference");
+                packageRef.Add(new XAttribute("Include", name));
+                packageRef.Add(new XAttribute("Version", version));
+                allPackageRefs.Add(packageRef);
+            }
+
+            if (allPackageRefs.Any())
             {
                 var group = new XElement("ItemGroup");
-                foreach (var pkg in packageRefs)
+                foreach (var pkg in allPackageRefs)
                     group.Add(pkg);
                 project.Add(group);
             }
@@ -1599,6 +1722,46 @@ public class ProjectConversionService
     {
         public string Value { get; set; } = "";
         public bool IsVariable { get; set; }
+    }
+
+    private bool IsFrameworkReference(string referenceName)
+    {
+        // Common .NET Framework references that are automatically included by SDK
+        var frameworkRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "System",
+            "System.Core",
+            "System.Data",
+            "System.Data.DataSetExtensions",
+            "System.Xml",
+            "System.Xml.Linq",
+            "Microsoft.CSharp",
+            "System.Net.Http",
+            "mscorlib",
+            // WinForms references (handled by UseWindowsForms=true)
+            "System.Drawing",
+            "System.Windows.Forms",
+            "System.Deployment",
+            // WPF references (handled by UseWPF=true)
+            "PresentationCore",
+            "PresentationFramework",
+            "WindowsBase",
+            "System.Xaml",
+            "UIAutomationProvider",
+            "UIAutomationTypes",
+            "ReachFramework",
+            // Other common framework assemblies
+            "System.Configuration",
+            "System.Runtime.Serialization",
+            "System.ServiceModel",
+            "System.Transactions",
+            "System.Web",
+            "System.Web.Services"
+        };
+
+        // Extract the simple name (before comma for versioned references)
+        var simpleName = referenceName.Split(',')[0].Trim();
+        return frameworkRefs.Contains(simpleName);
     }
 
     #endregion
