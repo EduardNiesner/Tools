@@ -1545,34 +1545,52 @@ public partial class MainForm : Form
             return;
         }
 
-        // Check if all TFM sets are identical (order-insensitive, case-insensitive for literals, exact for variables)
-        bool allSetsEqual = true;
-        var firstNormalized = NormalizeTfmSet(tfmValues[0]);
+        // Check if all project types are the same (all SDK or all Old-style)
+        // The "Change Target" button should be enabled when all selected items have the same project type
+        bool allSameProjectType = allSdkStyle || allOldStyle;
 
-        for (int i = 1; i < tfmValues.Count; i++)
-        {
-            var currentNormalized = NormalizeTfmSet(tfmValues[i]);
-            if (!firstNormalized.Equals(currentNormalized))
-            {
-                allSetsEqual = false;
-                break;
-            }
-        }
-
-        if (allSetsEqual)
+        if (allSameProjectType)
         {
             changeTargetFrameworkButton.Enabled = true;
             targetFrameworkComboBox.Enabled = true;
 
-            // Prefill the ComboBox with the exact joined TFMs from the first selection
-            // (since all are identical, we can use the first one)
-            targetFrameworkComboBox.Text = tfmValues[0];
+            // Check if all TFM sets are identical for pre-filling the combo box
+            bool allSetsEqual = true;
+            var firstNormalized = NormalizeTfmSet(tfmValues[0]);
+
+            for (int i = 1; i < tfmValues.Count; i++)
+            {
+                var currentNormalized = NormalizeTfmSet(tfmValues[i]);
+                if (!firstNormalized.Equals(currentNormalized))
+                {
+                    allSetsEqual = false;
+                    break;
+                }
+            }
+
+            if (allSetsEqual)
+            {
+                // All TFMs are identical, prefill with the common value
+                targetFrameworkComboBox.Text = tfmValues[0];
+                toolTip.SetToolTip(changeTargetFrameworkButton, 
+                    "Replace the target framework for all selected projects");
+            }
+            else
+            {
+                // Different TFMs but same project type - leave combo box empty for user input
+                targetFrameworkComboBox.Text = "";
+                toolTip.SetToolTip(changeTargetFrameworkButton, 
+                    "Replace the target framework for all selected projects with different current targets");
+            }
         }
         else
         {
+            // Mixed project types - disable the button
             changeTargetFrameworkButton.Enabled = false;
             targetFrameworkComboBox.Enabled = false;
             targetFrameworkComboBox.Text = "";
+            toolTip.SetToolTip(changeTargetFrameworkButton, 
+                "Cannot change target: selected projects have different project types (SDK and Old-style)");
         }
 
         // Enable Append button only if all selected rows are SDK-style
