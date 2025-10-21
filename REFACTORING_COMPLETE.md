@@ -1,5 +1,7 @@
 # CsProjChecker Refactoring - Complete
 
+> **Note:** This document describes a historical refactoring. The application has since been renamed from "CsProjChecker" to "CsProjConverter". All references to CsProjChecker in this document refer to the previous name.
+
 ## Summary
 
 Successfully refactored the CsProjChecker solution by separating GUI logic from business logic, creating a clean architecture with proper separation of concerns.
