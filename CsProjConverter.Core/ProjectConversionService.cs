@@ -3,9 +3,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
-using CsprojChecker.Core.Models;
+using CsProjConverter.Core.Models;
 
-namespace CsprojChecker.Core;
+namespace CsProjConverter.Core;
 
 /// <summary>
 /// Service for converting project files between old-style and SDK-style formats
