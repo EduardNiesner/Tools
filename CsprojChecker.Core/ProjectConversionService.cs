@@ -352,6 +352,230 @@ public class ProjectConversionService
     }
 
     /// <summary>
+    /// Convert an old-style project to SDK-style (custom one-way modern conversion with explicit includes)
+    /// </summary>
+    /// <param name="csprojPath">Path to the .csproj file</param>
+    /// <returns>Result of the conversion operation</returns>
+    public ConversionResult ConvertOldStyleToSdkStyleCustomModern(string csprojPath)
+    {
+        try
+        {
+            if (!File.Exists(csprojPath))
+                return new ConversionResult { Success = false, Error = "Project file not found" };
+
+            var fileInfo = new FileInfo(csprojPath);
+            if (fileInfo.IsReadOnly)
+                return new ConversionResult { Success = false, Error = $"File is read-only: {csprojPath}" };
+
+            var backupPath = csprojPath + ".bak";
+            File.Copy(csprojPath, backupPath, overwrite: true);
+
+            XDocument doc;
+            Encoding? encoding;
+            using (var reader = new StreamReader(csprojPath, true))
+            {
+                reader.Peek();
+                encoding = reader.CurrentEncoding;
+            }
+            doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+
+            var root = doc.Root;
+            if (root == null)
+                return new ConversionResult { Success = false, Error = "Invalid project file" };
+                
+            if (root.Attribute("Sdk") != null)
+            {
+                var existingTfm = ParseTargetFrameworks(root);
+                return new ConversionResult { Success = true, ResultingTargetFramework = existingTfm };
+            }
+
+            XNamespace ns = root.GetDefaultNamespace();
+
+            // Detect project type
+            bool isWinForms = DetectWinFormsProject(root, ns);
+            bool isWpf = DetectWpfProject(root, ns);
+            bool isDesktop = isWinForms || isWpf;
+
+            // Get old framework
+            var oldTfmVersion = root.Descendants(ns + "TargetFrameworkVersion").FirstOrDefault()?.Value ?? "v4.7.2";
+            string mappedTfm = ConvertFrameworkVersionCustomModern(oldTfmVersion);
+            
+            // Get OutputType to determine if library
+            var outputTypeElement = root.Descendants(ns + "OutputType").FirstOrDefault();
+            bool isLibrary = outputTypeElement?.Value.Equals("Library", StringComparison.OrdinalIgnoreCase) ?? false;
+
+            string sdkValue = isDesktop ? "Microsoft.NET.Sdk.WindowsDesktop" : "Microsoft.NET.Sdk";
+
+            // Build new project structure
+            var project = new XElement("Project", new XAttribute("Sdk", sdkValue));
+            
+            // Main PropertyGroup
+            var propertyGroup = new XElement("PropertyGroup");
+
+            // Always add these modern properties first
+            AddPropertyIfNotExists(propertyGroup, "Configuration", 
+                new XAttribute("Condition", " '$(Configuration)' == '' "), "Debug");
+            AddPropertyIfNotExists(propertyGroup, "Platform", 
+                new XAttribute("Condition", " '$(Platform)' == '' "), "AnyCPU");
+
+            // Add core properties
+            AddPropertyIfExistsOld(propertyGroup, root, ns, "OutputType");
+            AddPropertyIfExistsOld(propertyGroup, root, ns, "RootNamespace");
+            AddPropertyIfExistsOld(propertyGroup, root, ns, "AssemblyName");
+            
+            propertyGroup.Add(new XElement("TargetFramework", mappedTfm));
+
+            // Always add custom modern properties
+            propertyGroup.Add(new XElement("GenerateAssemblyInfo", "True"));
+            propertyGroup.Add(new XElement("EnableDefaultCompileItems", "false"));
+            propertyGroup.Add(new XElement("EnableDefaultEmbeddedResourceItems", "false"));
+            propertyGroup.Add(new XElement("AppendTargetFrameworkToOutputPath", "true"));
+
+            // Conditionally add ProjectGuid if it exists (for backward compatibility)
+            var projectGuid = root.Descendants(ns + "ProjectGuid").FirstOrDefault();
+            if (projectGuid != null && !string.IsNullOrWhiteSpace(projectGuid.Value))
+            {
+                propertyGroup.Add(new XElement("ProjectGuid", projectGuid.Value));
+            }
+
+            // Check for StartupObject and only add if not empty and not a library
+            var startupObject = root.Descendants(ns + "StartupObject").FirstOrDefault();
+            if (startupObject != null && !string.IsNullOrWhiteSpace(startupObject.Value) && !isLibrary)
+            {
+                propertyGroup.Add(new XElement("StartupObject", startupObject.Value));
+            }
+
+            if (isWinForms)
+                propertyGroup.Add(new XElement("UseWindowsForms", "true"));
+            if (isWpf)
+                propertyGroup.Add(new XElement("UseWPF", "true"));
+
+            project.Add(propertyGroup);
+
+            // Preserve conditional PropertyGroups (Debug, Release, etc.)
+            var conditionalGroups = root.Elements(ns + "PropertyGroup")
+                .Where(pg => pg.Attribute("Condition") != null)
+                .ToList();
+
+            foreach (var condGroup in conditionalGroups)
+            {
+                var newCondGroup = new XElement("PropertyGroup");
+                var condition = condGroup.Attribute("Condition");
+                if (condition != null)
+                {
+                    newCondGroup.Add(new XAttribute("Condition", condition.Value));
+                }
+
+                // Preserve specific compiler/build settings
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "DebugSymbols");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "DebugType");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "Optimize");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "OutputPath");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "DefineConstants");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "WarningLevel");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "PlatformTarget");
+                PreservePropertyIfExists(newCondGroup, condGroup, ns, "Prefer32Bit");
+
+                // Skip obsolete properties like ErrorReport
+                // Do NOT add: ErrorReport, ProductVersion, SchemaVersion, AppDesignerFolder, TargetFrameworkProfile
+
+                if (newCondGroup.HasElements)
+                {
+                    project.Add(newCondGroup);
+                }
+            }
+
+            // Preserve all Compile includes
+            var compileItems = root.Descendants(ns + "Compile").ToList();
+            if (compileItems.Any())
+            {
+                var compileGroup = new XElement("ItemGroup");
+                foreach (var compile in compileItems)
+                {
+                    var newCompile = CloneElementWithoutNamespace(compile);
+                    compileGroup.Add(newCompile);
+                }
+                project.Add(compileGroup);
+            }
+
+            // Preserve EmbeddedResource includes
+            var embeddedResourceItems = root.Descendants(ns + "EmbeddedResource").ToList();
+            if (embeddedResourceItems.Any())
+            {
+                var embeddedGroup = new XElement("ItemGroup");
+                foreach (var embedded in embeddedResourceItems)
+                {
+                    var newEmbedded = CloneElementWithoutNamespace(embedded);
+                    embeddedGroup.Add(newEmbedded);
+                }
+                project.Add(embeddedGroup);
+            }
+
+            // Preserve PackageReferences
+            var packageRefs = root
+                .Descendants(ns + "PackageReference")
+                .Select(CloneElementWithoutNamespace)
+                .ToList();
+
+            if (packageRefs.Any())
+            {
+                var group = new XElement("ItemGroup");
+                foreach (var pkg in packageRefs)
+                    group.Add(pkg);
+                project.Add(group);
+            }
+
+            // Preserve and simplify ProjectReferences to self-closing format
+            var projectRefs = root.Descendants(ns + "ProjectReference").ToList();
+            if (projectRefs.Any())
+            {
+                var group = new XElement("ItemGroup");
+                foreach (var projRef in projectRefs)
+                {
+                    // Create self-closing ProjectReference with only Include attribute
+                    var includeAttr = projRef.Attribute("Include");
+                    if (includeAttr != null)
+                    {
+                        var newProjRef = new XElement("ProjectReference", new XAttribute("Include", includeAttr.Value));
+                        group.Add(newProjRef);
+                    }
+                }
+                project.Add(group);
+            }
+
+            // Save atomically
+            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), project);
+            var tempPath = csprojPath + ".tmp";
+            var settings = new XmlWriterSettings
+            {
+                Encoding = encoding ?? Encoding.UTF8,
+                Indent = true,
+                IndentChars = "  ",
+                OmitXmlDeclaration = false
+            };
+
+            using (var writer = XmlWriter.Create(tempPath, settings))
+                newDoc.Save(writer);
+
+            File.Replace(tempPath, csprojPath, backupPath, ignoreMetadataErrors: true);
+
+            return new ConversionResult 
+            { 
+                Success = true, 
+                ResultingTargetFramework = mappedTfm 
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ConversionResult 
+            { 
+                Success = false, 
+                Error = ex.Message 
+            };
+        }
+    }
+
+    /// <summary>
     /// Convert an SDK-style project to old-style format
     /// </summary>
     /// <param name="csprojPath">Path to the .csproj file</param>
@@ -1037,6 +1261,58 @@ public class ProjectConversionService
         {
             propertyGroup.Add(new XElement(propertyName, element.Value));
         }
+    }
+
+    private void AddPropertyIfExistsOld(XElement propertyGroup, XElement root, XNamespace ns, string propertyName)
+    {
+        var element = root.Descendants(ns + propertyName).FirstOrDefault();
+        if (element != null && !string.IsNullOrWhiteSpace(element.Value))
+        {
+            propertyGroup.Add(new XElement(propertyName, element.Value));
+        }
+    }
+
+    private void AddPropertyIfNotExists(XElement propertyGroup, string propertyName, XAttribute? condition, string value)
+    {
+        var newElement = new XElement(propertyName, value);
+        if (condition != null)
+        {
+            newElement.Add(condition);
+        }
+        propertyGroup.Add(newElement);
+    }
+
+    private void PreservePropertyIfExists(XElement newGroup, XElement oldGroup, XNamespace ns, string propertyName)
+    {
+        var element = oldGroup.Elements(ns + propertyName).FirstOrDefault();
+        if (element != null)
+        {
+            newGroup.Add(new XElement(propertyName, element.Value));
+        }
+    }
+
+    private string ConvertFrameworkVersionCustomModern(string oldTfm)
+    {
+        // Handle variable tokens - preserve them verbatim
+        if (oldTfm.StartsWith("$"))
+        {
+            return oldTfm;
+        }
+
+        // Map old-style versions to SDK-style
+        // Examples: v4.5 → net45, v4.7.2 → net472
+        var trimmed = oldTfm.Trim();
+
+        if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            // Remove 'v' prefix and dots
+            var version = trimmed.Substring(1).Replace(".", "");
+            var newTfm = "net" + version;
+            return newTfm;
+        }
+
+        // If it doesn't start with 'v', return as-is
+        return trimmed;
     }
 
     private XElement CloneElementWithoutNamespace(XElement element)

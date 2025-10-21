@@ -44,6 +44,7 @@ public partial class MainForm : Form
     // Project style conversion controls
     private Button ConvertToSdkRoundTripButton = null!;
     private Button ConvertToSdkOneWayButton = null!;
+    private Button ConvertToSdkCustomModernButton = null!;
     private Button convertToOldStyleButton = null!;
     private ToolTip toolTip = null!;
 
@@ -430,16 +431,33 @@ public partial class MainForm : Form
         toolTip.SetToolTip(ConvertToSdkOneWayButton, "Creates a clean modern SDK project. Not intended to be converted back.");
         projectStyleGroupBox.Controls.Add(ConvertToSdkOneWayButton);
 
+        // Convert to SDK-style (custom one-way modern) button
+        ConvertToSdkCustomModernButton = new Button
+        {
+            Location = new Point(10, 100),
+            Size = new Size(340, 27),
+            Text = "Custom One-Way (Modern)",
+            Name = "convertToSdkCustomModernButton",
+            Enabled = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            TabIndex = 2
+        };
+        ConvertToSdkCustomModernButton.Click += ConvertToSdkCustomModernButton_Click;
+        ConvertToSdkCustomModernButton.AccessibleName = "Convert to Custom Modern SDK Style";
+        ConvertToSdkCustomModernButton.AccessibleDescription = "Convert selected old-style projects to custom modern SDK-style format with explicit includes";
+        toolTip.SetToolTip(ConvertToSdkCustomModernButton, "Converts to modern SDK format with explicit file includes and preserved build settings.");
+        projectStyleGroupBox.Controls.Add(ConvertToSdkCustomModernButton);
+
         // Convert to Old-style button
         convertToOldStyleButton = new Button
         {
-            Location = new Point(10, 100),
+            Location = new Point(10, 135),
             Size = new Size(340, 27),
             Text = "Convert SDK → Old-style",
             Name = "convertToOldStyleButton",
             Enabled = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            TabIndex = 2
+            TabIndex = 3
         };
         convertToOldStyleButton.Click += ConvertToOldStyleButton_Click;
         convertToOldStyleButton.AccessibleName = "Convert to Old Style";
@@ -1222,6 +1240,102 @@ public partial class MainForm : Form
         UpdateFrameworkOperationsState();
     }
 
+    private async void ConvertToSdkCustomModernButton_Click(object? sender, EventArgs e)
+    {
+        var selectedProjects = new List<(int rowIndex, string filePath, string currentTfms)>();
+
+        foreach (DataGridViewRow row in projectsGridView.SelectedRows)
+        {
+            var filePath = row.Cells["FullPath"].Value?.ToString() ?? "";
+            var style = row.Cells["Style"].Value?.ToString() ?? "";
+            var currentTfms = row.Cells["TargetFrameworks"].Value?.ToString() ?? "";
+
+            if (style == "Old-style")
+            {
+                selectedProjects.Add((row.Index, filePath, currentTfms));
+            }
+        }
+
+        if (selectedProjects.Count == 0)
+        {
+            return;
+        }
+
+        var confirmMessage = $"Convert {selectedProjects.Count} old-style project(s) to custom modern SDK format?\n" +
+                             "This will:\n" +
+                             "- Add modern properties (GenerateAssemblyInfo, EnableDefaultCompileItems=false, etc.)\n" +
+                             "- Preserve all Compile includes and build settings\n" +
+                             "- Remove obsolete properties\n" +
+                             "- Simplify ProjectReference elements\n" +
+                             "A .bak backup will be created before conversion.\n" +
+                             "This conversion is NOT reversible.";
+
+        var confirmResult = MessageBox.Show(confirmMessage, "Confirm Custom Modern Conversion",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+        if (confirmResult != DialogResult.Yes)
+        {
+            return;
+        }
+
+        int successCount = 0;
+        int errorCount = 0;
+        var results = new List<string>();
+
+        foreach (var (rowIndex, filePath, currentTfms) in selectedProjects)
+        {
+            try
+            {
+                var newTfm = await ConvertOldStyleToSdkCustomModernAsync(filePath, currentTfms);
+
+                projectsGridView.Rows[rowIndex].Cells["Style"].Value = "SDK";
+                projectsGridView.Rows[rowIndex].Cells["TargetFrameworks"].Value = newTfm;
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "✓";
+                projectsGridView.Rows[rowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
+
+                var project = _allProjects.FirstOrDefault(p => p.FullPath == filePath);
+                if (project != null)
+                {
+                    project.Style = "SDK";
+                    project.TargetFrameworks = newTfm;
+                    project.Changed = "✓";
+                }
+
+                successCount++;
+                results.Add($"✓ {Path.GetFileName(filePath)}: {currentTfms} → {newTfm}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("read-only") || ex.Message.Contains("locked"))
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                results.Add($"✗ {Path.GetFileName(filePath)}: Error - {ex.Message}");
+                projectsGridView.Rows[rowIndex].Cells["Changed"].Value = "Error";
+            }
+        }
+
+        projectsGridView.Refresh();
+
+        var summaryMessage = $"Custom modern SDK conversion completed.\n\n" +
+                             $"Successful: {successCount}\n" +
+                             $"Errors: {errorCount}\n\n" +
+                             string.Join("\n", results.Take(10));
+
+        if (results.Count > 10)
+        {
+            summaryMessage += $"\n\n... and {results.Count - 10} more";
+        }
+
+        MessageBox.Show(summaryMessage, "Custom Modern SDK Conversion",
+            MessageBoxButtons.OK, errorCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+
+        UpdateFrameworkOperationsState();
+    }
+
     private async void ConvertToOldStyleButton_Click(object? sender, EventArgs e)
     {
         // Get selected SDK-style projects
@@ -1387,6 +1501,7 @@ public partial class MainForm : Form
             appendTargetFrameworkComboBox.Enabled = false;
             ConvertToSdkRoundTripButton.Enabled = false;
             ConvertToSdkOneWayButton.Enabled = false;
+            ConvertToSdkCustomModernButton.Enabled = false;
             convertToOldStyleButton.Enabled = false;
             return;
         }
@@ -1425,6 +1540,7 @@ public partial class MainForm : Form
             appendTargetFrameworkComboBox.Enabled = false;
             ConvertToSdkRoundTripButton.Enabled = false;
             ConvertToSdkOneWayButton.Enabled = false;
+            ConvertToSdkCustomModernButton.Enabled = false;
             convertToOldStyleButton.Enabled = false;
             return;
         }
@@ -1476,11 +1592,13 @@ public partial class MainForm : Form
         {
             ConvertToSdkRoundTripButton.Enabled = true;
             ConvertToSdkOneWayButton.Enabled = true;
+            ConvertToSdkCustomModernButton.Enabled = true;
         }
         else
         {
             ConvertToSdkRoundTripButton.Enabled = false;
             ConvertToSdkOneWayButton.Enabled = false;
+            ConvertToSdkCustomModernButton.Enabled = false;
         }
 
         // Enable Convert to Old-style button only if all selected rows are SDK-style
@@ -1736,6 +1854,21 @@ public partial class MainForm : Form
         return await Task.Run(() =>
         {
             var result = _conversionService.ConvertOldStyleToSdkStyleModern(filePath);
+            
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.Error);
+            }
+
+            return result.ResultingTargetFramework ?? oldTfm;
+        });
+    }
+
+    private async Task<string> ConvertOldStyleToSdkCustomModernAsync(string filePath, string oldTfm)
+    {
+        return await Task.Run(() =>
+        {
+            var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(filePath);
             
             if (!result.Success)
             {
