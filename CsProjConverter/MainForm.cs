@@ -11,10 +11,10 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using System.Text;
-using CsprojChecker.Core;
-using CsprojChecker.Core.Models;
+using CsProjConverter.Core;
+using CsProjConverter.Core.Models;
 
-namespace CsprojChecker;
+namespace CsProjConverter;
 
 public partial class MainForm : Form
 {
@@ -63,7 +63,7 @@ public partial class MainForm : Form
     // Settings file path
     private static readonly string SettingsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "CsprojChecker");
+        "CsProjConverter");
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
 
     // Common TFMs
@@ -100,7 +100,7 @@ public partial class MainForm : Form
         toolTip = new ToolTip();
 
         // Form settings
-        this.Text = "Csproj Checker";
+        this.Text = "CsProjConverter";
         this.Size = new Size(1000, 750);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.MinimumSize = new Size(900, 650);

@@ -1,9 +1,9 @@
 using System.Xml.Linq;
 using Xunit;
-using CsprojChecker.Core;
-using CsprojChecker.Core.Models;
+using CsProjConverter.Core;
+using CsProjConverter.Core.Models;
 
-namespace CsprojChecker.Tests;
+namespace CsProjConverter.Tests;
 
 /// <summary>
 /// Integration tests for .csproj conversion functionality
@@ -16,7 +16,7 @@ public class ConversionTests : IDisposable
     
     public ConversionTests()
     {
-        _testDirectory = Path.Combine(Path.GetTempPath(), "CsprojCheckerTests_" + Guid.NewGuid().ToString("N"));
+        _testDirectory = Path.Combine(Path.GetTempPath(), "CsProjConverterTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testDirectory);
         _conversionService = new ProjectConversionService();
     }

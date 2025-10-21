@@ -1,4 +1,4 @@
-namespace CsprojChecker;
+namespace CsProjConverter;
 
 static class Program
 {

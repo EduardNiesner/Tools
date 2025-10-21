@@ -1,4 +1,4 @@
-namespace CsprojChecker.Core.Models;
+namespace CsProjConverter.Core.Models;
 
 /// <summary>
 /// Result of a project conversion operation

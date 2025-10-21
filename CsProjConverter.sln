@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker", "CsprojChecker\CsprojChecker.csproj", "{21EBDAC0-A0BE-49E5-845E-C189490D04DB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsProjConverter", "CsProjConverter\CsProjConverter.csproj", "{21EBDAC0-A0BE-49E5-845E-C189490D04DB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker.Tests", "CsprojChecker.Tests\CsprojChecker.Tests.csproj", "{F4AB659C-29A8-4762-889F-1364949B643E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsProjConverter.Tests", "CsProjConverter.Tests\CsProjConverter.Tests.csproj", "{F4AB659C-29A8-4762-889F-1364949B643E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsprojChecker.Core", "CsprojChecker.Core\CsprojChecker.Core.csproj", "{C562F331-A270-4798-A28A-C8C6EAD86240}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsProjConverter.Core", "CsProjConverter.Core\CsProjConverter.Core.csproj", "{C562F331-A270-4798-A28A-C8C6EAD86240}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

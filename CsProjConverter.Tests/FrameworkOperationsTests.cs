@@ -1,9 +1,9 @@
 using System.Xml.Linq;
 using Xunit;
-using CsprojChecker.Core;
-using CsprojChecker.Core.Models;
+using CsProjConverter.Core;
+using CsProjConverter.Core.Models;
 
-namespace CsprojChecker.Tests;
+namespace CsProjConverter.Tests;
 
 /// <summary>
 /// Tests for Change Target Framework and Append Target Framework operations
@@ -15,7 +15,7 @@ public class FrameworkOperationsTests : IDisposable
     
     public FrameworkOperationsTests()
     {
-        _testDirectory = Path.Combine(Path.GetTempPath(), "CsprojCheckerFrameworkTests_" + Guid.NewGuid().ToString("N"));
+        _testDirectory = Path.Combine(Path.GetTempPath(), "CsProjConverterFrameworkTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testDirectory);
         _conversionService = new ProjectConversionService();
     }

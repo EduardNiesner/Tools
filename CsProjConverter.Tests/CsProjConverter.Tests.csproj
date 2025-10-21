@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CsprojChecker.Core\CsprojChecker.Core.csproj" />
+    <ProjectReference Include="..\CsProjConverter.Core\CsProjConverter.Core.csproj" />
   </ItemGroup>
 
 </Project>
