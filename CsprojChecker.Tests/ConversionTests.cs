@@ -2350,6 +2350,213 @@ namespace ConsoleApp1
         Assert.Null(appIcon);
     }
 
+    [Fact]
+    public void Test_CustomModern_RealWorldComplexProject()
+    {
+        // Arrange - A complex real-world project with many features
+        var projectPath = Path.Combine(_testDirectory, "CustomModernRealWorld.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
+    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{ABC12345-1234-1234-1234-123456789ABC}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>MyWinFormsApp</RootNamespace>
+    <AssemblyName>MyWinFormsApp</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetFrameworkProfile></TargetFrameworkProfile>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+    <Reference Include=""System.Data"" />
+    <Reference Include=""System.Drawing"" />
+    <Reference Include=""System.Windows.Forms"" />
+    <Reference Include=""System.Xml"" />
+    <Reference Include=""Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed"">
+      <HintPath>..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include=""CustomUtilityLib"">
+      <HintPath>..\lib\CustomUtilityLib.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include=""MainForm.cs"">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include=""MainForm.Designer.cs"">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include=""Program.cs"" />
+    <Compile Include=""Properties\AssemblyInfo.cs"" />
+    <Compile Include=""Utils\Helper.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include=""MainForm.resx"">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include=""Properties\Resources.resx"">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=""app.ico"" />
+    <Content Include=""Resources\logo.png"">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include=""config.xml"">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <SubType>Designer</SubType>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=""App.config"" />
+    <None Include=""packages.config"" />
+    <None Include=""README.md"" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\CoreLib\CoreLib.csproj"">
+      <Project>{DEF67890-5678-5678-5678-567856785678}</Project>
+      <Name>CoreLib</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include=""Data\"" />
+    <Folder Include=""Models\"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleCustomModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        var doc = XDocument.Load(projectPath);
+        var root = doc.Root;
+        
+        Assert.NotNull(root);
+        Assert.Equal("Project", root.Name.LocalName);
+        
+        // Verify SDK attribute
+        var sdkAttr = root.Attribute("Sdk");
+        Assert.NotNull(sdkAttr);
+        Assert.Equal("Microsoft.NET.Sdk.WindowsDesktop", sdkAttr.Value);
+        
+        // Verify main PropertyGroup
+        var mainPropGroup = root.Elements().First(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") == null);
+        Assert.NotNull(mainPropGroup);
+        
+        // Check essential properties are preserved
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "OutputType" && e.Value == "WinExe"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "RootNamespace" && e.Value == "MyWinFormsApp"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "AssemblyName" && e.Value == "MyWinFormsApp"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "TargetFramework" && e.Value == "net472"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "ProjectGuid"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "AutoGenerateBindingRedirects" && e.Value == "true"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "ApplicationIcon" && e.Value == "app.ico"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "UseWindowsForms" && e.Value == "true"));
+        
+        // Check modern properties are added
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "GenerateAssemblyInfo"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "EnableDefaultCompileItems"));
+        Assert.NotNull(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "EnableDefaultEmbeddedResourceItems"));
+        
+        // Check obsolete properties are removed
+        Assert.Null(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "ProductVersion"));
+        Assert.Null(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "SchemaVersion"));
+        Assert.Null(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "AppDesignerFolder"));
+        Assert.Null(mainPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "FileAlignment"));
+        
+        // Verify conditional PropertyGroups are preserved
+        var debugPropGroup = root.Elements()
+            .Where(e => e.Name.LocalName == "PropertyGroup")
+            .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Debug") == true);
+        Assert.NotNull(debugPropGroup);
+        Assert.NotNull(debugPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "DebugSymbols"));
+        Assert.NotNull(debugPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "Optimize"));
+        Assert.NotNull(debugPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "PlatformTarget"));
+        Assert.Null(debugPropGroup.Elements().FirstOrDefault(e => e.Name.LocalName == "ErrorReport"));
+        
+        // Verify Compile items are preserved
+        var compileItems = root.Descendants().Where(e => e.Name.LocalName == "Compile").ToList();
+        Assert.Equal(5, compileItems.Count);
+        Assert.Contains(compileItems, c => c.Attribute("Include")?.Value == "MainForm.cs");
+        Assert.Contains(compileItems, c => c.Attribute("Include")?.Value == "Program.cs");
+        
+        // Verify EmbeddedResource items are preserved
+        var embeddedItems = root.Descendants().Where(e => e.Name.LocalName == "EmbeddedResource").ToList();
+        Assert.Equal(2, embeddedItems.Count);
+        
+        // Verify Content items are preserved (including icon)
+        var contentItems = root.Descendants().Where(e => e.Name.LocalName == "Content").ToList();
+        Assert.Equal(3, contentItems.Count);
+        Assert.Contains(contentItems, c => c.Attribute("Include")?.Value == "app.ico");
+        Assert.Contains(contentItems, c => c.Attribute("Include")?.Value == @"Resources\logo.png");
+        
+        // Verify None items are preserved
+        var noneItems = root.Descendants().Where(e => e.Name.LocalName == "None").ToList();
+        Assert.Equal(3, noneItems.Count);
+        
+        // Verify framework references are removed
+        var references = root.Descendants().Where(e => e.Name.LocalName == "Reference").ToList();
+        Assert.DoesNotContain(references, r => r.Attribute("Include")?.Value == "System");
+        Assert.DoesNotContain(references, r => r.Attribute("Include")?.Value == "System.Windows.Forms");
+        
+        // Verify local reference is preserved
+        var customLib = references.FirstOrDefault(r => r.Attribute("Include")?.Value == "CustomUtilityLib");
+        Assert.NotNull(customLib);
+        
+        // Verify NuGet package is converted
+        var packageRefs = root.Descendants().Where(e => e.Name.LocalName == "PackageReference").ToList();
+        var newtonsoft = packageRefs.FirstOrDefault(e => e.Attribute("Include")?.Value == "Newtonsoft.Json");
+        Assert.NotNull(newtonsoft);
+        Assert.Equal("13.0.1", newtonsoft.Attribute("Version")?.Value);
+        
+        // Verify ProjectReference is simplified
+        var projectRefs = root.Descendants().Where(e => e.Name.LocalName == "ProjectReference").ToList();
+        Assert.Single(projectRefs);
+        var coreLibRef = projectRefs[0];
+        Assert.Equal(@"..\CoreLib\CoreLib.csproj", coreLibRef.Attribute("Include")?.Value);
+        Assert.Empty(coreLibRef.Elements()); // Should be self-closing
+        
+        // Verify Folder items are NOT present
+        var folderItems = root.Descendants().Where(e => e.Name.LocalName == "Folder").ToList();
+        Assert.Empty(folderItems);
+    }
+
     #endregion
 
     #region Helper Classes
