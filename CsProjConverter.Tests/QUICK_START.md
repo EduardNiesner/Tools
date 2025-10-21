@@ -1,4 +1,4 @@
-# Quick Start: Running CsprojChecker Tests
+# Quick Start: Running CsProjConverter Tests
 
 ## Prerequisites
 - .NET 9.0 SDK or later
@@ -56,8 +56,8 @@ dotnet test --filter "FullyQualifiedName~FrameworkOperationsTests"
 ## Test Results Location
 
 Test results and documentation:
-- `CsprojChecker.Tests/TEST_RESULTS.md` - Detailed test coverage
-- `CsprojChecker.Tests/EXECUTION_SUMMARY.md` - Execution summary with timing
+- `CsProjConverter.Tests/TEST_RESULTS.md` - Detailed test coverage
+- `CsProjConverter.Tests/EXECUTION_SUMMARY.md` - Execution summary with timing
 
 ## Common Commands
 
@@ -116,8 +116,8 @@ dotnet build
 
 ### Specific Test Fails
 1. Check the test output for the failure reason
-2. Review the test code in `CsprojChecker.Tests/`
-3. Look at the temporary files in `/tmp/CsprojChecker*` if needed
+2. Review the test code in `CsProjConverter.Tests/`
+3. Look at the temporary files in `/tmp/CsProjConverter*` if needed
 
 ### Permission Issues
 Ensure the test runner has permissions to create temporary directories in `/tmp/`
@@ -125,8 +125,8 @@ Ensure the test runner has permissions to create temporary directories in `/tmp/
 ## Test Files Structure
 
 ```
-CsprojChecker.Tests/
-├── CsprojChecker.Tests.csproj      # Test project file
+CsProjConverter.Tests/
+├── CsProjConverter.Tests.csproj      # Test project file
 ├── ConversionTests.cs               # 20 conversion tests
 ├── FrameworkOperationsTests.cs      # 11 framework operation tests
 ├── TEST_RESULTS.md                  # Detailed results documentation
@@ -163,7 +163,7 @@ jobs:
 
 - [xUnit Documentation](https://xunit.net/)
 - [.NET Testing Documentation](https://docs.microsoft.com/en-us/dotnet/core/testing/)
-- [CsprojChecker README](../README.md)
+- [CsProjConverter README](../README.md)
 - [Conversion Reference](../docs/csproj-conversion-reference.md)
 - [Testing Guide](../docs/testing-guide.md)
 

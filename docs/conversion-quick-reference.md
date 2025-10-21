@@ -1,6 +1,6 @@
 # .csproj Conversion Quick Reference
 
-A quick guide for developers using or maintaining the CsprojChecker conversion features.
+A quick guide for developers using or maintaining the CsProjConverter conversion features.
 
 ## Supported Conversions
 
@@ -220,7 +220,7 @@ When detected, conversion adds:
 See `docs/csproj-conversion-reference.md` section 10 for comprehensive test cases.
 
 ### Implementation Location
-All conversion logic is in `CsprojChecker/MainForm.cs`, lines 1430-1952.
+All conversion logic is in `CsProjConverter/MainForm.cs`, lines 1430-1952.
 
 ---
 

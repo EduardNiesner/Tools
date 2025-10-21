@@ -19,7 +19,7 @@ You have a solution with 5 SDK-style projects targeting different versions of .N
 Upgrade all projects to net9.0 or net9.0-windows
 
 ### Steps
-1. Open CsprojChecker and scan the solution folder
+1. Open CsProjConverter and scan the solution folder
 2. Select all 5 SDK-style projects (Ctrl+Click or Shift+Click)
 3. **Observe:** "Change target framework" button is **ENABLED** ✅
 4. **Observe:** Target framework combo box is **EMPTY** (because current TFMs differ)

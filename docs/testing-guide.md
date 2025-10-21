@@ -12,7 +12,7 @@ This guide helps developers and reviewers:
 
 ## Prerequisites
 
-- CsprojChecker application built and ready to run
+- CsProjConverter application built and ready to run
 - Sample .csproj files (or ability to create them)
 - Access to the conversion reference documentation
 
@@ -69,7 +69,7 @@ The conversion reference includes 7 comprehensive test cases in Section 10. Use 
    </Project>
    ```
 
-2. Load in CsprojChecker and verify detection:
+2. Load in CsProjConverter and verify detection:
    - Style: "Old-style"
    - Target Framework: "v4.8"
 
@@ -295,7 +295,7 @@ When reporting conversion bugs or issues:
 3. Include the expected output (from reference documentation)
 4. Specify which test case or scenario failed
 5. Include error messages (if any)
-6. Specify CsprojChecker version and environment
+6. Specify CsProjConverter version and environment
 
 ## Continuous Validation
 

@@ -8,7 +8,7 @@ Successfully refactored the CsProjChecker solution by separating GUI logic from 
 
 ### 1. Created CsProjChecker.Core Library
 - **New Project**: `CsProjChecker.Core` - A .NET 9.0 class library
-- **Location**: `/CsprojChecker.Core/`
+- **Location**: `/CsProjConverter.Core/`
 - **Purpose**: Contains all business logic for project conversion and framework operations
 
 ### 2. Core API Structure
@@ -98,7 +98,7 @@ CsProjChecker.Tests
 
 ### Build Status
 ```bash
-dotnet build CsprojChecker.sln
+dotnet build CsProjConverter.sln
 # Build succeeded in 1.4s
 # 0 Warning(s)
 # 0 Error(s)
@@ -106,7 +106,7 @@ dotnet build CsprojChecker.sln
 
 ### Test Status
 ```bash
-dotnet test CsprojChecker.Tests/CsprojChecker.Tests.csproj
+dotnet test CsProjConverter.Tests/CsProjConverter.Tests.csproj
 # Test Run Successful
 # Total tests: 36
 # Passed: 35

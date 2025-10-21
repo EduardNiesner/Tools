@@ -134,8 +134,8 @@ Execution Time: 2.35 seconds
 
 ### Test Project Structure
 ```
-CsprojChecker.Tests/
-├── CsprojChecker.Tests.csproj
+CsProjConverter.Tests/
+├── CsProjConverter.Tests.csproj
 ├── ConversionTests.cs (20 tests)
 ├── FrameworkOperationsTests.cs (11 tests)
 └── TEST_RESULTS.md
