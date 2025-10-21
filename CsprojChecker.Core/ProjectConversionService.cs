@@ -569,6 +569,32 @@ public class ProjectConversionService
                 project.Add(noneGroup);
             }
 
+            // Preserve ApplicationDefinition items (for WPF)
+            var appDefItems = root.Descendants(ns + "ApplicationDefinition").ToList();
+            if (appDefItems.Any())
+            {
+                var appDefGroup = new XElement("ItemGroup");
+                foreach (var appDef in appDefItems)
+                {
+                    var newAppDef = CloneElementWithoutNamespace(appDef);
+                    appDefGroup.Add(newAppDef);
+                }
+                project.Add(appDefGroup);
+            }
+
+            // Preserve Page items (for WPF)
+            var pageItems = root.Descendants(ns + "Page").ToList();
+            if (pageItems.Any())
+            {
+                var pageGroup = new XElement("ItemGroup");
+                foreach (var page in pageItems)
+                {
+                    var newPage = CloneElementWithoutNamespace(page);
+                    pageGroup.Add(newPage);
+                }
+                project.Add(pageGroup);
+            }
+
             // Handle Reference elements
             var references = root.Descendants(ns + "Reference").ToList();
             var localReferences = new List<XElement>();
