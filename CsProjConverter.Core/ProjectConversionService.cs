@@ -48,7 +48,7 @@ public class ProjectConversionService
                     encoding = reader.CurrentEncoding;
                 }
 
-                doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+                doc = XDocument.Load(csprojPath, LoadOptions.None);
             }
             catch (IOException ex)
             {
@@ -186,6 +186,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = false
                 };
 
@@ -245,7 +247,7 @@ public class ProjectConversionService
                 reader.Peek();
                 encoding = reader.CurrentEncoding;
             }
-            doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+            doc = XDocument.Load(csprojPath, LoadOptions.None);
 
             var root = doc.Root;
             if (root == null)
@@ -327,6 +329,8 @@ public class ProjectConversionService
                 Encoding = encoding ?? Encoding.UTF8,
                 Indent = true,
                 IndentChars = "  ",
+                NewLineChars = "\n",
+                NewLineHandling = NewLineHandling.Replace,
                 OmitXmlDeclaration = false
             };
 
@@ -377,7 +381,7 @@ public class ProjectConversionService
                 reader.Peek();
                 encoding = reader.CurrentEncoding;
             }
-            doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+            doc = XDocument.Load(csprojPath, LoadOptions.None);
 
             var root = doc.Root;
             if (root == null)
@@ -700,6 +704,8 @@ public class ProjectConversionService
                 Encoding = encoding ?? Encoding.UTF8,
                 Indent = true,
                 IndentChars = "  ",
+                NewLineChars = "\n",
+                NewLineHandling = NewLineHandling.Replace,
                 OmitXmlDeclaration = false
             };
 
@@ -759,7 +765,7 @@ public class ProjectConversionService
                     encoding = reader.CurrentEncoding;
                 }
 
-                doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+                doc = XDocument.Load(csprojPath, LoadOptions.None);
             }
             catch (IOException ex)
             {
@@ -962,6 +968,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = false
                 };
 
@@ -1032,7 +1040,7 @@ public class ProjectConversionService
                     encoding = reader.CurrentEncoding;
                 }
 
-                doc = XDocument.Load(csprojPath, LoadOptions.PreserveWhitespace);
+                doc = XDocument.Load(csprojPath, LoadOptions.None);
             }
             catch (IOException ex)
             {
@@ -1130,6 +1138,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = doc.Declaration == null
                 };
 
