@@ -1,43 +1,65 @@
-using System.Drawing;
-
 namespace CsProjConverter;
 
-public partial class MainForm : Form
+partial class MainForm
 {
-    private GroupBox pathSelectionGroupBox = null!;
-    private Label pathLabel = null!;
-    private ComboBox folderPathComboBox = null!;
-    private Button browseButton = null!;
-    private Button checkCsprojButton = null!;
-    private Button exportCsvButton = null!;
-    private GroupBox filterResultsGroupBox = null!;
-    private Label filterLabel = null!;
-    private TextBox fileFilterTextBox = null!;
-    private DataGridView projectsGridView = null!;
-    private Label statusLabel = null!;
-    private Button cancelButton = null!;
-    private GroupBox frameworkOperationsGroupBox = null!;
-    private GroupBox projectStyleGroupBox = null!;
+    /// <summary>
+    /// Required designer variable.
+    /// </summary>
+    private System.ComponentModel.IContainer components = null;
 
-    // Framework operations controls
-    private Label targetFrameworkLabel = null!;
-    private ComboBox targetFrameworkComboBox = null!;
-    private Button changeTargetFrameworkButton = null!;
-    private Label appendTargetFrameworkLabel = null!;
-    private ComboBox appendTargetFrameworkComboBox = null!;
-    private Button appendTargetFrameworkButton = null!;
+    /// <summary>
+    /// Clean up any resources being used.
+    /// </summary>
+    /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && (components != null))
+        {
+            components.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 
-    // Project style conversion controls
-    private Button ConvertToSdkRoundTripButton = null!;
-    private Button ConvertToSdkOneWayButton = null!;
-    private Button ConvertToSdkCustomModernButton = null!;
-    private Button convertToOldStyleButton = null!;
-    private ToolTip toolTip = null!;
+    #region Windows Form Designer generated code
 
+    /// <summary>
+    /// Required method for Designer support - do not modify
+    /// the contents of this method with the code editor.
+    /// </summary>
     private void InitializeComponent()
     {
+        this.components = new System.ComponentModel.Container();
+        this.pathSelectionGroupBox = new GroupBox();
+        this.pathLabel = new Label();
+        this.folderPathComboBox = new ComboBox();
+        this.browseButton = new Button();
+        this.checkCsprojButton = new Button();
+        this.exportCsvButton = new Button();
+        this.filterResultsGroupBox = new GroupBox();
+        this.filterLabel = new Label();
+        this.fileFilterTextBox = new TextBox();
+        this.projectsGridView = new DataGridView();
+        this.frameworkOperationsGroupBox = new GroupBox();
+        this.targetFrameworkLabel = new Label();
+        this.targetFrameworkComboBox = new ComboBox();
+        this.changeTargetFrameworkButton = new Button();
+        this.appendTargetFrameworkLabel = new Label();
+        this.appendTargetFrameworkComboBox = new ComboBox();
+        this.appendTargetFrameworkButton = new Button();
+        this.projectStyleGroupBox = new GroupBox();
+        this.ConvertToSdkRoundTripButton = new Button();
+        this.ConvertToSdkOneWayButton = new Button();
+        this.ConvertToSdkCustomModernButton = new Button();
+        this.convertToOldStyleButton = new Button();
+        this.statusLabel = new Label();
+        this.cancelButton = new Button();
+        this.toolTip = new ToolTip(this.components);
+        this.pathSelectionGroupBox.SuspendLayout();
+        this.filterResultsGroupBox.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)(this.projectsGridView)).BeginInit();
+        this.frameworkOperationsGroupBox.SuspendLayout();
+        this.projectStyleGroupBox.SuspendLayout();
         this.SuspendLayout();
-        toolTip = new ToolTip();
 
         // Form settings
         this.Text = "CsProjConverter";
@@ -441,6 +463,39 @@ public partial class MainForm : Form
         this.Controls.Add(statusLabel);
         this.Controls.Add(cancelButton);
 
+        this.pathSelectionGroupBox.ResumeLayout(false);
+        this.filterResultsGroupBox.ResumeLayout(false);
+        ((System.ComponentModel.ISupportInitialize)(this.projectsGridView)).EndInit();
+        this.frameworkOperationsGroupBox.ResumeLayout(false);
+        this.projectStyleGroupBox.ResumeLayout(false);
         this.ResumeLayout(false);
     }
+
+    #endregion
+
+    private GroupBox pathSelectionGroupBox;
+    private Label pathLabel;
+    private ComboBox folderPathComboBox;
+    private Button browseButton;
+    private Button checkCsprojButton;
+    private Button exportCsvButton;
+    private GroupBox filterResultsGroupBox;
+    private Label filterLabel;
+    private TextBox fileFilterTextBox;
+    private DataGridView projectsGridView;
+    private Label statusLabel;
+    private Button cancelButton;
+    private GroupBox frameworkOperationsGroupBox;
+    private GroupBox projectStyleGroupBox;
+    private Label targetFrameworkLabel;
+    private ComboBox targetFrameworkComboBox;
+    private Button changeTargetFrameworkButton;
+    private Label appendTargetFrameworkLabel;
+    private ComboBox appendTargetFrameworkComboBox;
+    private Button appendTargetFrameworkButton;
+    private Button ConvertToSdkRoundTripButton;
+    private Button ConvertToSdkOneWayButton;
+    private Button ConvertToSdkCustomModernButton;
+    private Button convertToOldStyleButton;
+    private ToolTip toolTip;
 }
