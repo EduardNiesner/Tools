@@ -2568,4 +2568,140 @@ namespace ConsoleApp1
     }
 
     #endregion
+
+    #region XML Formatting Tests
+
+    [Fact]
+    public void TestXmlFormatting_EndTagsOnSeparateLines()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "XmlFormattingTest.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <RootNamespace>TestApp</RootNamespace>
+    <AssemblyName>TestApp</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""System"" />
+  </ItemGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = ConvertOldStyleToSdkStyle(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        // Read the output file and check formatting
+        var output = File.ReadAllText(projectPath);
+        
+        // Verify that end tags are on separate lines with proper indentation
+        // Each closing tag should be on its own line
+        Assert.DoesNotContain("</TargetFramework></PropertyGroup>", output);
+        Assert.DoesNotContain("</OutputType></PropertyGroup>", output);
+        Assert.DoesNotContain("</RootNamespace></PropertyGroup>", output);
+        Assert.DoesNotContain("</AssemblyName></PropertyGroup>", output);
+        
+        // Verify proper indentation - closing tags should have consistent indentation
+        Assert.Contains("  </PropertyGroup>", output); // PropertyGroup closing tag with 2 spaces
+        Assert.Contains("</Project>", output); // Project closing tag with no leading spaces
+        
+        // Verify that nested elements are properly indented
+        var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        // Find the TargetFramework element and verify it's properly formatted
+        var targetFrameworkLine = lines.FirstOrDefault(l => l.Contains("<TargetFramework>"));
+        Assert.NotNull(targetFrameworkLine);
+        Assert.True(targetFrameworkLine.StartsWith("    "), "TargetFramework should be indented with 4 spaces");
+        
+        // Find the closing PropertyGroup tag
+        var propertyGroupClosingLine = lines.FirstOrDefault(l => l.Trim() == "</PropertyGroup>");
+        Assert.NotNull(propertyGroupClosingLine);
+        Assert.True(propertyGroupClosingLine.StartsWith("  "), "PropertyGroup closing tag should be indented with 2 spaces");
+    }
+
+    [Fact]
+    public void TestXmlFormatting_ConsistentNewlines()
+    {
+        // Arrange
+        var projectPath = Path.Combine(_testDirectory, "NewlineTest.csproj");
+        var oldStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""15.0"">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+  </PropertyGroup>
+  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
+</Project>";
+        File.WriteAllText(projectPath, oldStyleContent);
+        
+        // Act
+        var result = _conversionService.ConvertOldStyleToSdkStyleModern(projectPath);
+        
+        // Assert
+        Assert.True(result.Success, $"Conversion failed: {result.Error}");
+        
+        // Read the output and verify newlines
+        var output = File.ReadAllText(projectPath);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(output);
+        
+        // Count line endings - should use \n (LF) consistently
+        var lfCount = output.Count(c => c == '\n');
+        var crCount = output.Count(c => c == '\r');
+        
+        // Verify we have newlines
+        Assert.True(lfCount > 0, "Output should contain newlines");
+        
+        // Verify no mixed line endings (should be LF only, no CRLF)
+        // This checks that NewLineChars = "\n" is working
+        Assert.Equal(0, crCount);
+    }
+
+    [Fact]
+    public void TestXmlFormatting_MultipleFrameworks()
+    {
+        // Arrange - Test with TargetFrameworks (plural) which was mentioned in the issue
+        var projectPath = Path.Combine(_testDirectory, "MultiFrameworkFormatTest.csproj");
+        var sdkStyleContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>";
+        File.WriteAllText(projectPath, sdkStyleContent);
+        
+        // Act - Change to multiple targets
+        var result = _conversionService.ChangeTargetFramework(projectPath, "net48;net6.0");
+        
+        // Assert
+        Assert.True(result.Success, $"Operation failed: {result.Error}");
+        
+        // Read and verify formatting
+        var output = File.ReadAllText(projectPath);
+        
+        // The issue specifically mentioned </TargetFrameworks></PropertyGroup> appearing on the same line
+        // This would be wrong - verify it doesn't happen
+        Assert.DoesNotContain("</TargetFrameworks></PropertyGroup>", output);
+        
+        // Also verify proper indentation - PropertyGroup closing tag should be on its own line
+        // with 2-space indentation (matching the opening tag level)
+        Assert.Contains("\n  </PropertyGroup>", output.Replace("\r\n", "\n"));
+        
+        // Verify output is well-formed XML
+        var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.All(lines, line => 
+        {
+            // No line should have two closing tags (like </X></Y>)
+            var closingTagCount = line.Count(c => c == '<' && line.IndexOf(c) < line.Length - 1 && line[line.IndexOf(c) + 1] == '/');
+            Assert.True(closingTagCount <= 1, $"Line should not have multiple closing tags: {line}");
+        });
+    }
+
+    #endregion
 }
