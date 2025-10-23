@@ -186,6 +186,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = false
                 };
 
@@ -327,6 +329,8 @@ public class ProjectConversionService
                 Encoding = encoding ?? Encoding.UTF8,
                 Indent = true,
                 IndentChars = "  ",
+                NewLineChars = "\n",
+                NewLineHandling = NewLineHandling.Replace,
                 OmitXmlDeclaration = false
             };
 
@@ -700,6 +704,8 @@ public class ProjectConversionService
                 Encoding = encoding ?? Encoding.UTF8,
                 Indent = true,
                 IndentChars = "  ",
+                NewLineChars = "\n",
+                NewLineHandling = NewLineHandling.Replace,
                 OmitXmlDeclaration = false
             };
 
@@ -962,6 +968,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = false
                 };
 
@@ -1130,6 +1138,8 @@ public class ProjectConversionService
                     Encoding = encoding ?? Encoding.UTF8,
                     Indent = true,
                     IndentChars = "  ",
+                    NewLineChars = "\n",
+                    NewLineHandling = NewLineHandling.Replace,
                     OmitXmlDeclaration = doc.Declaration == null
                 };
 
